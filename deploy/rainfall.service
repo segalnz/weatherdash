@@ -1,0 +1,19 @@
+[Unit]
+Description=Davis Rainfall MQTT → InfluxDB Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/weatherdash.env
+Type=simple
+User=weatherdash
+Group=weatherdash
+WorkingDirectory=/opt/weatherdash/venvs/rainfall
+ExecStart=/opt/weatherdash/.venv/bin/python /opt/weatherdash/venvs/rainfall/rainfall.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

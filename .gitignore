@@ -1,0 +1,28 @@
+# Credentials and machine-local settings
+github_access_token.txt
+*access_token*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Python and virtual environments
+.venv/
+**/bin/
+**/lib/
+**/lib64/
+**/include/
+**/share/
+pyvenv.cfg
+__pycache__/
+*.py[cod]
+.pytest_cache/
+# Runtime state and backups
+*.sqlite*
+*.db
+*.db-*
+*.log
+metno_cache.json
+forecast_cache.json
+backups/
+weatherdash-backups/

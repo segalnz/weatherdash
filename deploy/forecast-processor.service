@@ -1,0 +1,18 @@
+[Unit]
+Description=Forecast processor — align, error compute, correct
+Documentation=https://github.com/
+After=network-online.target influxd.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/weatherdash.env
+Type=oneshot
+User=weatherdash
+Group=weatherdash
+WorkingDirectory=/opt/weatherdash/venvs
+ExecStart=/opt/weatherdash/.venv/bin/python /opt/weatherdash/venvs/forecast_processor.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

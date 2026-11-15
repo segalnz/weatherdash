@@ -1,0 +1,19 @@
+[Unit]
+Description=Moonshine Valley Barometer
+Documentation=https://github.com/segalnz/weatherdash
+After=network.target influxd.service
+Wants=influxd.service
+
+[Service]
+EnvironmentFile=/etc/weatherdash.env
+Type=simple
+User=weatherdash
+Group=weatherdash
+WorkingDirectory=/opt/weatherdash/venvs/barometer
+Environment="PYTHONPATH=/opt/weatherdash/venvs/barometer"
+ExecStart=/opt/weatherdash/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8090 --log-level info
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

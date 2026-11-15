@@ -1,0 +1,22 @@
+[Unit]
+Description=Local pressure MQTT bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=pressure-bridge
+WorkingDirectory=/opt/weatherdash
+StateDirectory=pressure-bridge
+Environment=PRESSURE_STATE_DB=/var/lib/pressure-bridge/outbox.sqlite3
+EnvironmentFile=/etc/pressure-bridge.env
+ExecStart=/opt/weatherdash/.venv/bin/python /opt/weatherdash/pressure-monitor/tools/pressure_bridge.py
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

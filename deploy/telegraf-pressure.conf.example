@@ -1,0 +1,50 @@
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://${MQTT_HOST}:${MQTT_PORT}"]
+  topics = ["pressure/telemetry"]
+  qos = 1
+  client_id = "telegraf-weather-pressure"
+  username = "${PRESSURE_MQTT_USERNAME}"
+  password = "${PRESSURE_MQTT_PASSWORD}"
+  data_format = "json_v2"
+  [[inputs.mqtt_consumer.json_v2]]
+    measurement_name = "mqtt_consumer"
+    [[inputs.mqtt_consumer.json_v2.object]]
+      path = "@this"
+      disable_prepend_keys = true
+      included_keys = ["schema_version", "pressure", "quality_valid", "sensor_status", "sample_time", "sample_age_seconds", "sequence", "pressure_basis", "time_source", "altitude_m", "legacy_calibration_hpa", "correction_location"]
+      [inputs.mqtt_consumer.json_v2.object.fields]
+        schema_version = "int"
+        pressure = "float"
+        quality_valid = "bool"
+        sample_time = "float"
+        sample_age_seconds = "float"
+        sequence = "int"
+        altitude_m = "float"
+        legacy_calibration_hpa = "float"
+  [inputs.mqtt_consumer.tags]
+    station = "local-pressure"
+    location = "local-weather-station"
+
+[[processors.starlark]]
+  namepass = ["mqtt_consumer"]
+  source = '''
+def apply(metric):
+    if metric.tags.get("topic") != "pressure/telemetry":
+        return metric
+    f = metric.fields
+    stamp = f.get("sample_time", 0.0)
+    age = metric.time / 1000000000.0 - stamp
+    if not (age >= -30 and age < 600):
+        return None
+    pressure = f.get("pressure", -1.0)
+    valid = (f.get("schema_version") == 3 and f.get("quality_valid", False)
+             and f.get("sensor_status") == "ok"
+             and pressure >= 0.01 and pressure < 2000
+             and f.get("pressure_basis") == "legacy_sea_level_corrected"
+             and f.get("correction_location") == "firmware")
+    f["quality_valid"] = valid
+    if not valid:
+        f.pop("pressure", None)
+    metric.time = int(stamp * 1000000000)
+    return metric
+'''

@@ -1,0 +1,10 @@
+[Unit]
+Description=Check MET Norway forecast every thirty minutes with HTTP cache validation
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

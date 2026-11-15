@@ -1,0 +1,22 @@
+{
+  "deviceInfo": {
+    "devEui": "0123456789abcdef"
+  },
+  "fPort": 30,
+  "time": "2026-11-14T21:00:00+00:00",
+  "data": "QQTSAAABky0=",
+  "object": {
+    "schema_version": 3,
+    "pressure_hpa": 1032.13,
+    "pressure_basis": "legacy_sea_level_corrected",
+    "correction_location": "firmware",
+    "altitude_m": 243,
+    "legacy_calibration_hpa": 1008.5,
+    "quality_valid": true,
+    "sensor_status": "ok",
+    "sequence": 1234,
+    "sample_age_seconds": 0,
+    "sensor": "BMP388"
+  },
+  "deduplicationId": "11111111-2222-4333-8444-555555555555"
+}

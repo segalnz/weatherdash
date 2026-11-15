@@ -1,0 +1,15 @@
+[Unit]
+Description=Build, cache and archive six-hour local weather forecast
+After=network-online.target influxdb.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/weatherdash.env
+Type=oneshot
+StateDirectory=weatherdash
+StateDirectoryMode=0755
+User=weatherdash
+Group=weatherdash
+WorkingDirectory=/opt/weatherdash/venvs/barometer
+ExecStart=/opt/weatherdash/.venv/bin/python /opt/weatherdash/venvs/barometer/snapshot_forecast.py
+TimeoutStartSec=120
