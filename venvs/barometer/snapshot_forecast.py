@@ -15,6 +15,11 @@ CACHE = Path(os.getenv('FORECAST_CACHE', '/var/lib/weatherdash/forecast_cache.js
 def archive(strip):
     issued = datetime.fromisoformat(strip.generated_at_iso)
     points = []
+    if strip.synthesis is not None:
+        points.append(Point('forecast_synthesis').tag('model_version', strip.model_version).time(issued)
+                      .field('payload_json', strip.synthesis.model_dump_json())
+                      .field('observations_json', strip.rooftop.model_dump_json())
+                      .field('features_json', strip.derived.model_dump_json()))
     for slot in strip.slots[1:]:
         if not slot.forecast_valid_time:
             continue
@@ -29,7 +34,9 @@ def archive(strip):
              .field('evidence_json', json.dumps(slot.evidence))
              .field('temperature_adjustment_c', slot.temperature_adjustment_c))
         for key, value in [('temp', slot.temperature_c), ('baseline_temp', slot.baseline_temperature_c),
-                           ('precipitation', slot.precipitation_mm), ('forecast_issued', slot.forecast_issued),
+                           ('precipitation', slot.precipitation_mm), ('baseline_precipitation', slot.baseline_precipitation_mm),
+                           ('baseline_wind_speed', slot.baseline_wind_speed_kmh / 3.6 if slot.baseline_wind_speed_kmh is not None else None),
+                           ('forecast_issued', slot.forecast_issued),
                            ('wind_speed', slot.wind_speed_kmh / 3.6 if slot.wind_speed_kmh is not None else None),
                            ('pressure', slot.forecast_pressure_hpa), ('humidity', slot.forecast_humidity_pct),
                            ('wind_dir', slot.wind_dir_deg)]:

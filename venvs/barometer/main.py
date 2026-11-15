@@ -25,6 +25,7 @@ from sensor_quality import assess_humidity
 from heuristics import compute_now_forecast, _project_horizon, compute_pressure_tendency
 from local_forecast import interpret, adjust_temperature
 from svg_renderer import render_forecast_strip
+from synthesis import synthesise
 
 app = FastAPI(title="Moonshine Valley Barometer")
 
@@ -64,6 +65,8 @@ def _display_forecast():
         age = (now - datetime.fromisoformat(strip.generated_at_iso)).total_seconds()
         if 0 <= age <= 20 * 60:
             _expire_pressure(strip, now)
+            if strip.synthesis and now >= datetime.fromisoformat(strip.synthesis.valid_until):
+                strip.synthesis = None
             return strip
     except (OSError, ValueError, TypeError):
         pass
@@ -77,6 +80,8 @@ def _display_forecast():
 
 def _expire_pressure(strip, now):
     # The forecast cache can live longer than an observation's ten-minute limit.
+    if strip.rooftop is None or strip.derived is None:
+        return
     stamp = strip.rooftop.observation_times.get("pressure")
     try:
         age = (now - datetime.fromisoformat(stamp)).total_seconds()
@@ -105,7 +110,7 @@ def _build_forecast() -> ForecastStrip:
     rooftop = get_latest_rooftop()
     rooftop_df = get_recent_hours_data(hours=4)
     rain_df = get_rainfall_series(hours=4)
-    derived = compute_derived_features(rooftop_df, rain_df)
+    derived = compute_derived_features(rooftop_df, rain_df, now=now)
     pressure_tendency = compute_pressure_tendency(derived)
 
     assess_humidity(rooftop, rooftop_df, now)
@@ -184,6 +189,8 @@ def _build_forecast() -> ForecastStrip:
             hour_offset=horizon_h,
             evidence=slot_evidence,
             baseline_temperature_c=raw.get("temp"),
+            baseline_wind_speed_kmh=metno_ws_kmh,
+            baseline_precipitation_mm=raw.get("precipitation") if raw.get("precipitation_period_hours") == 1 else None,
             forecast_pressure_hpa=raw.get("pressure"),
             forecast_humidity_pct=raw.get("humidity"),
             temperature_adjustment_c=adjustment,
@@ -206,6 +213,7 @@ def _build_forecast() -> ForecastStrip:
         slots.append(slot)
 
     return ForecastStrip(
+        synthesis=synthesise(rooftop, derived, raw_metno, now),
         generated_at=generated,
         generated_at_iso=now.isoformat(),
         evidence=evidence,

@@ -36,6 +36,18 @@
     max-width: 100%;
     height: auto;
   }
+  .outlook {
+    max-width: 1100px;
+    width: 100%;
+    margin-top: 20px;
+    padding: 20px;
+    border-radius: 12px;
+    background: #1a1a2e;
+    line-height: 1.6;
+  }
+  .outlook h2 { font-size: 1.1rem; margin-bottom: 8px; }
+  .outlook ul { padding-left: 24px; margin-top: 8px; }
+  .outlook small { display: block; color: #a0abc4; margin-top: 12px; }
   .footer {
     margin-top: 20px;
     font-size: 0.85rem;
@@ -73,6 +85,13 @@
   <div class="forecast-container">
     <img id="forecast-img" src="/api/forecast/svg" alt="Forecast strip">
   </div>
+  <section class="outlook" aria-live="polite">
+    <h2>Next six hours</h2>
+    <p id="outlook-summary">Loading the consolidated outlook…</p>
+    <ul id="outlook-windows"></ul>
+    <ul id="outlook-limitations"></ul>
+    <small id="outlook-context"></small>
+  </section>
   <div class="footer">
     <span class="status-dot"></span>
     <span>Live</span>
@@ -87,10 +106,48 @@
       st.textContent = 'load error, retrying';
     };
 
+    async function updateOutlook() {
+      var summary = document.getElementById('outlook-summary');
+      var windows = document.getElementById('outlook-windows');
+      var limitations = document.getElementById('outlook-limitations');
+      var context = document.getElementById('outlook-context');
+      windows.replaceChildren();
+      limitations.replaceChildren();
+      context.textContent = '';
+      try {
+        var response = await fetch('/api/forecast', {cache: 'no-store'});
+        if (!response.ok) throw new Error('forecast unavailable');
+        var data = await response.json();
+        var outlook = data.synthesis;
+        if (!outlook || Date.now() >= Date.parse(outlook.valid_until)) {
+          summary.textContent = 'Consolidated outlook awaiting a fresh forecast update.';
+          return;
+        }
+        summary.textContent = outlook.summary;
+        var clock = new Intl.DateTimeFormat('en-NZ', {timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit'});
+        outlook.windows.forEach(function(window) {
+          var row = document.createElement('li');
+          row.textContent = clock.format(new Date(window.start)) + '–' + clock.format(new Date(window.end)) +
+            (window.state === 'wet' ? ': MET rain guidance' : ': MET dry guidance') + ' (hourly timing)';
+          windows.appendChild(row);
+        });
+        outlook.limitations.forEach(function(message) {
+          var row = document.createElement('li');
+          row.textContent = message;
+          limitations.appendChild(row);
+        });
+        context.textContent = 'Assessed ' + clock.format(new Date(outlook.as_of)) + ' NZ. ' + outlook.uncertainty;
+      } catch (error) {
+        summary.textContent = 'Consolidated outlook unavailable; awaiting a successful refresh.';
+      }
+    }
+    updateOutlook();
+
     function tick() {
       cd--;
       if (cd <= 0) {
         img.src = '/api/forecast/svg?_=' + Date.now();
+        updateOutlook();
         cd = 60;
       }
       st.textContent = 'next update in ' + cd + 's';

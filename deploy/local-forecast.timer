@@ -1,8 +1,8 @@
 [Unit]
-Description=Refresh local six-hour forecast every ten minutes
+Description=Refresh local six-hour forecast every five minutes
 
 [Timer]
-OnCalendar=*:0/10
+OnCalendar=*:0/5
 Persistent=true
 RandomizedDelaySec=15
 

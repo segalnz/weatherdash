@@ -131,16 +131,63 @@ class ForecastSlot(BaseModel):
     forecast_pressure_hpa: float | None = None
     forecast_humidity_pct: float | None = None
     baseline_temperature_c: float | None = None
+    baseline_wind_speed_kmh: float | None = None
+    baseline_precipitation_mm: float | None = None
     temperature_adjustment_c: float = 0.0
     confidence_kind: str = "heuristic_evidence_score"
     forecast_valid_time: str | None = None
     forecast_issued: float | None = None
 
 
+class EvidenceItem(BaseModel):
+    id: str
+    dependency_group: str
+    message: str
+    value: float | None = None
+    unit: str | None = None
+    window_hours: float | None = None
+    quality: str = "ok"
+    source: str = "local-derived"
+    observed_at: str | None = None
+    assessed_at: str
+    observation_times: dict[str, str] = Field(default_factory=dict)
+    supports: list[str] = Field(default_factory=list)
+
+
+class RegimeAssessment(BaseModel):
+    id: str
+    support: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    dependency_groups: list[str] = Field(default_factory=list)
+    caveat: str | None = None
+
+
+class ForecastWindow(BaseModel):
+    start: str
+    end: str
+    state: str
+    source: str = "metno"
+    timing_basis: str = "Intersecting MET hourly intervals; not precise onset/cessation"
+
+
+class ForecastSynthesis(BaseModel):
+    as_of: str
+    valid_until: str
+    summary: str
+    evidence: list[EvidenceItem] = Field(default_factory=list)
+    regimes: list[RegimeAssessment] = Field(default_factory=list)
+    windows: list[ForecastWindow] = Field(default_factory=list)
+    model_local_agreement: str = "not_assessed"
+    conflicts: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    uncertainty: str
+
+
 class ForecastStrip(BaseModel):
+    synthesis: ForecastSynthesis | None = None
     generated_at: str
     generated_at_iso: str | None = None
-    model_version: str = "rules_v1"
+    model_version: str = "rules_v2_evidence"
     evidence: list[str] = Field(default_factory=list)
     degraded: bool = False
     slots: list[ForecastSlot] = Field(default_factory=list)

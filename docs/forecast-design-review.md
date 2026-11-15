@@ -226,3 +226,29 @@ thresholds or a claim that an expert forecaster has validated them.
   topography/altitude and update cadence; repeated fetches do not imply new runs.
 - [WMO nowcasting / very-short-range application area](https://space.oscar.wmo.int/applicationareas/view/2_3_nowcasting_very_short_range_forecasting):
   context for combining observations and numerical prediction over short lead times.
+
+## First implementation milestone
+
+The first increment now provides a deterministic `synthesis` object in the forecast
+API and a consolidated-outlook panel on the browser dashboard. It contains a
+quality-qualified evidence ledger with dependency groups and assessment/input
+timestamps, cautious regime candidates, local/MET pattern consistency, limitations,
+and MET wet/dry windows explicitly bounded to the next six hours. Missing hours
+are not joined across, and no rainfall amounts are prorated or probabilities invented.
+
+Pressure acceleration is grouped with pressure tendency rather than counted as
+independent support. Flagged/stale moisture cannot corroborate deterioration or mist.
+Direction shifts require non-calm wind and adequately populated history windows.
+Current regime candidates are not yet persistence-tracked; the API explicitly says
+so. Contradictory pressure/dry-MET patterns stay visible without overriding MET.
+
+Existing forecast values and temperature-adjustment defaults remain the baseline.
+The new schema also retains explicit baseline wind/rain and archives synthesis,
+observations and derived features at issue time. Forecast generation is scheduled
+every five minutes to better match short-lived sensor evidence; expired synthesis
+is withheld independently of the regional forecast cache. Older caches remain readable.
+
+Next: add regime persistence/hysteresis and expanded baseline verification before
+introducing new local corrections or changes to precipitation timing. Confidence
+numbers remain the legacy heuristic scores, separate from the new qualitative
+support and limitations; calibrated probabilities are still not implemented.

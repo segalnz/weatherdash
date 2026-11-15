@@ -67,7 +67,16 @@ def compute_derived_features(rooftop_df, rain_df, now=None):
             result.dewpoint_delta_1h = trend(df, 'dewpoint', 1, now)
         if 'direction' in rooftop_df:
             def window_mean(start, stop):
-                return circular_mean(rooftop_df.loc[rooftop_df['_time'].between(start, stop), 'direction'])
+                if 'speed' not in rooftop_df:
+                    return float('nan')
+                rows = rooftop_df.loc[rooftop_df['_time'].between(start, stop), ['_time', 'direction', 'speed']].dropna().sort_values('_time')
+                # Direction in calm/variable flow or sparse windows is not front evidence.
+                if (len(rows) < 3 or (rows.speed * 3.6 < 8).any()
+                        or rows['_time'].iloc[0] > start + pd.Timedelta(minutes=5)
+                        or rows['_time'].iloc[-1] < stop - pd.Timedelta(minutes=5)
+                        or rows['_time'].diff().dropna().max() > pd.Timedelta(minutes=10)):
+                    return float('nan')
+                return circular_mean(rows.direction)
             a = window_mean(now - pd.Timedelta(minutes=70), now - pd.Timedelta(minutes=50))
             b = window_mean(now - pd.Timedelta(minutes=15), now)
             if math.isfinite(a) and math.isfinite(b):

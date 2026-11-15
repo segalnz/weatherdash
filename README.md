@@ -46,17 +46,24 @@ For example, falling pressure and a rising dew point may support deterioration
 already forecast by MET. They do not locate an incoming rain band or establish its
 arrival time. Likewise, high humidity alone cannot confirm rain or fog.
 
-**Implemented today:** sensor quality checks, time-aware trends, local explanatory
-rules, observation-based current conditions, coherent MET hourly future forecasts,
-a bounded decaying temperature adjustment, and issue-time archiving/verification.
-Local reasoning already explains several patterns, but future rain/cloud states
-and wind remain largely MET-driven.
+**Implemented today:** sensor quality checks, time-aware trends, a structured
+local evidence ledger, cautious regime candidates, explicit mixed local/MET
+signals, and a consolidated outlook with timed MET wet/dry windows and limitations.
+The API exposes this as `synthesis`; the browser dashboard displays it below the
+forecast strip. Evidence dependencies prevent related pressure changes being counted
+as independent corroboration. The outlook expires when its supporting observations
+age out. Regime support is qualitative, not a calibrated probability.
 
-**Proposed next:** structured evidence and competing regime hypotheses, explicit
-model/local disagreement, a consolidated six-hour narrative, and better-separated
-quality and uncertainty reporting. These are design improvements, not features
-claimed to exist already. An LLM is optional for wording; the reasoning does not
-require one. See the [design review and implementation priorities](docs/forecast-design-review.md).
+Observation-based current conditions and MET hourly future forecasts remain the
+baseline, with the existing bounded temperature adjustment. Future values are not
+changed by the new narrative layer. Issue-time archives now include the synthesis,
+local observation/feature snapshot and explicit model wind/rain baselines.
+
+**Proposed next:** regime persistence/hysteresis, expanded baseline verification,
+and better-separated quality and uncertainty reporting across the older hourly
+confidence display. These are not claimed to exist already. An LLM is optional
+for wording; the reasoning does not require one. See the
+[design review and implementation priorities](docs/forecast-design-review.md).
 
 The approach fits observation-aware short-range forecasting; WMO describes
 [nowcasting and very-short-range forecasting](https://space.oscar.wmo.int/applicationareas/view/2_3_nowcasting_very_short_range_forecasting)
@@ -163,7 +170,7 @@ INFLUX_TOKEN=offline-test .venv/bin/python -m unittest discover -s tests -v
 INFLUX_TOKEN=offline-test .venv/bin/python -m unittest discover -s pressure-monitor/tests -v
 ```
 
-The initial repository snapshot passes 25 tests. Coverage includes forecast timing,
+The regression suites cover both the original forecast path and structured synthesis scenarios. Coverage includes forecast timing,
 zero-value preservation, rain evidence, humidity quality, pressure freshness,
 invalid readings, history gaps, JSON/SVG output and durable deduplication.
 
