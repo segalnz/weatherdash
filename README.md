@@ -1,13 +1,23 @@
 # Weatherdash
 
-Weatherdash combines local weather-station observations with MET Norway forecasts
-to produce a rolling six-hour local forecast. It runs on a Linux host or Proxmox
-LXC, stores observations and forecasts in InfluxDB v2, and serves a FastAPI dashboard,
-JSON API and SVG forecast strip. Grafana dashboard exports are also included.
+Weatherdash combines local **temperature, humidity, wind speed and direction,
+gusts, rainfall and barometric pressure** with MET Norway forecasts to produce a
+rolling six-hour local outlook. It interprets how these observations change together,
+checks their quality, and compares the resulting local evidence with the regional
+forecast. Pressure is one part of that evidence, alongside moisture, temperature,
+wind and measured rain.
 
-The current pressure source is a BMP388 LoRaWAN node routed through ChirpStack.
-Firmware performs pressure compensation and correction. Weatherdash accepts the
-already-corrected pressure in hPa; it does not apply those corrections again.
+The local instruments include an SHT45 temperature/humidity sensor, an anemometer
+for wind and gusts, a Davis rain bucket, and a BMP388 pressure sensor connected
+through LoRaWAN and ChirpStack. Light-level observations can also be ingested;
+solar-normalized interpretation of lux remains a planned improvement. Each source
+contributes only when suitable data is available—missing readings remain unknown.
+
+The application runs on a Linux host or Proxmox LXC, stores observations and
+forecasts in InfluxDB v2, and serves a FastAPI dashboard, JSON API and SVG forecast
+strip. Grafana dashboard exports are also included. Sensor-specific pressure
+compensation and correction happen in firmware, before Weatherdash receives the
+corrected hPa readings; the application does not apply those corrections again.
 
 ## Forecasting approach: reason from evidence, without a local training prerequisite
 
