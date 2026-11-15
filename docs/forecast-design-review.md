@@ -252,3 +252,18 @@ Next: add regime persistence/hysteresis and expanded baseline verification befor
 introducing new local corrections or changes to precipitation timing. Confidence
 numbers remain the legacy heuristic scores, separate from the new qualitative
 support and limitations; calibrated probabilities are still not implemented.
+
+## Second implementation milestone — 16 November 2026
+
+Regime persistence/hysteresis and expanded numerical verification are now
+implemented. This supersedes the first milestone's statement that regimes are
+not yet persistence-tracked. The previous successful cache carries state; fresh
+cycles, entry duration, wider exit bands, quality withholding and bounded retention
+are explicit. No forecast values or MET rain timing are changed by that tracking.
+
+New archives capture issue-time persistence and MET baselines. Scheduled
+verification matches quality-qualified observations, requires complete gauge hours,
+reports paired metrics by version/lead/regime and exposes `/api/verification` plus
+a browser comparison table. Independent front/fog truth, calibrated probabilities
+and statistical significance of any improvement are not claimed. See
+[the policy and operations guide](regimes-and-verification.md).

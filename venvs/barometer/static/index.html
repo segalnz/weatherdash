@@ -88,9 +88,26 @@
   <section class="outlook" aria-live="polite">
     <h2>Next six hours</h2>
     <p id="outlook-summary">Loading the consolidated outlook…</p>
+    <ul id="regime-status"></ul>
     <ul id="outlook-windows"></ul>
     <ul id="outlook-limitations"></ul>
     <small id="outlook-context"></small>
+  </section>
+  <section class="outlook">
+    <h2>Forecast verification</h2>
+    <label for="verification-variable">Compare
+      <select id="verification-variable">
+        <option value="temp">Temperature</option>
+        <option value="wind_speed">Wind speed</option>
+        <option value="precipitation">Hourly rain amount</option>
+      </select>
+    </label>
+    <p id="verification-status">Waiting for verification results…</p>
+    <div style="overflow-x:auto"><table id="verification-table" style="width:100%;text-align:left" hidden>
+      <thead><tr><th>Lead</th><th>Reference</th><th>Pairs</th><th>Weatherdash MAE</th><th>Reference MAE</th><th>Error reduction</th></tr></thead>
+      <tbody id="verification-rows"></tbody>
+    </table></div>
+    <small>Each row compares the same observations. Positive error reduction means lower mean absolute error; it is not a significance test. Overlapping forecasts are correlated.</small>
   </section>
   <div class="footer">
     <span class="status-dot"></span>
@@ -101,6 +118,7 @@
     var img = document.getElementById('forecast-img');
     var st = document.getElementById('status-text');
     var cd = 60;
+    var forecastVersion = null;
 
     img.onerror = function() {
       st.textContent = 'load error, retrying';
@@ -111,6 +129,8 @@
       var windows = document.getElementById('outlook-windows');
       var limitations = document.getElementById('outlook-limitations');
       var context = document.getElementById('outlook-context');
+      var regimes = document.getElementById('regime-status');
+      regimes.replaceChildren();
       windows.replaceChildren();
       limitations.replaceChildren();
       context.textContent = '';
@@ -118,6 +138,8 @@
         var response = await fetch('/api/forecast', {cache: 'no-store'});
         if (!response.ok) throw new Error('forecast unavailable');
         var data = await response.json();
+        forecastVersion = data.model_version;
+        updateVerification();
         var outlook = data.synthesis;
         if (!outlook || Date.now() >= Date.parse(outlook.valid_until)) {
           summary.textContent = 'Consolidated outlook awaiting a fresh forecast update.';
@@ -125,6 +147,14 @@
         }
         summary.textContent = outlook.summary;
         var clock = new Intl.DateTimeFormat('en-NZ', {timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit'});
+        (outlook.regimes || []).forEach(function(regime) {
+          var row = document.createElement('li');
+          var names = {deteriorating: 'Deterioration pattern', possible_frontal_passage: 'Possible frontal-passage pattern', mist_potential: 'Mist/low-cloud potential'};
+          var states = {candidate: 'under observation', persistent: 'persistent evidence', weakening: 'weakening'};
+          row.textContent = (names[regime.id] || 'Local pattern') + ': ' + (states[regime.persistence] || 'under observation');
+          if (regime.persistent_since) row.textContent += ' (persistent since ' + clock.format(new Date(regime.persistent_since)) + ')';
+          regimes.appendChild(row);
+        });
         outlook.windows.forEach(function(window) {
           var row = document.createElement('li');
           row.textContent = clock.format(new Date(window.start)) + '–' + clock.format(new Date(window.end)) +
@@ -141,6 +171,45 @@
         summary.textContent = 'Consolidated outlook unavailable; awaiting a successful refresh.';
       }
     }
+    async function updateVerification() {
+      var status = document.getElementById('verification-status');
+      var table = document.getElementById('verification-table');
+      var body = document.getElementById('verification-rows');
+      body.replaceChildren();
+      table.hidden = true;
+      var variable = document.getElementById('verification-variable').value;
+      try {
+        var response = await fetch('/api/verification', {cache: 'no-store'});
+        if (!response.ok) throw new Error('verification unavailable');
+        var report = await response.json();
+        if (report.status !== 'ok') {
+          status.textContent = report.message || 'Verification results unavailable.';
+          return;
+        }
+        report.cohorts.filter(function(c) { return c.regime === 'all' && c.model_version === forecastVersion; }).forEach(function(c) {
+          var scores = c.variables[variable];
+          if (!scores) return;
+          Object.entries(scores.paired).forEach(function(entry) {
+            var labels = {metno: 'MET Norway', persistence: 'Issue-time persistence', always_dry: 'Always dry'};
+            var pair = entry[1];
+            var row = document.createElement('tr');
+            [String(c.lead_hour) + 'h', labels[entry[0]] || entry[0], String(pair.count),
+             pair.weatherdash_mae.toFixed(2) + ' ' + scores.unit,
+             pair.reference_mae.toFixed(2) + ' ' + scores.unit,
+             pair.mae_improvement.toFixed(2) + ' ' + scores.unit].forEach(function(value) {
+              var cell = document.createElement('td'); cell.textContent = value; row.appendChild(cell);
+            });
+            body.appendChild(row);
+          });
+        });
+        table.hidden = body.children.length === 0;
+        status.textContent = table.hidden ? 'No complete paired results for the current rules yet; forecasts must reach their valid times first.' :
+          'Current rules, past ' + report.lookback_hours + ' hours. Rain verification uses complete gauge hours; no skill claim is implied by a small sample.';
+      } catch (error) {
+        status.textContent = 'Verification results unavailable; waiting for a successful refresh.';
+      }
+    }
+    document.getElementById('verification-variable').addEventListener('change', updateVerification);
     updateOutlook();
 
     function tick() {

@@ -132,6 +132,7 @@ class ForecastSlot(BaseModel):
     forecast_humidity_pct: float | None = None
     baseline_temperature_c: float | None = None
     baseline_wind_speed_kmh: float | None = None
+    baseline_wind_dir_deg: float | None = None
     baseline_precipitation_mm: float | None = None
     temperature_adjustment_c: float = 0.0
     confidence_kind: str = "heuristic_evidence_score"
@@ -160,6 +161,28 @@ class RegimeAssessment(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
     dependency_groups: list[str] = Field(default_factory=list)
     caveat: str | None = None
+    persistence: str = "candidate"
+    first_seen: str | None = None
+    persistent_since: str | None = None
+    fresh_cycles: int = 1
+
+
+class RegimeMemory(BaseModel):
+    assessment: RegimeAssessment
+    first_seen: str
+    last_seen: str
+    last_qualifying: str
+    observation_times: dict[str, str] = Field(default_factory=dict)
+    fresh_cycles: int = 1
+    persistent_since: str | None = None
+    exit_started: str | None = None
+    exit_cycles: int = 0
+
+
+class RegimeTransition(BaseModel):
+    id: str
+    state: str
+    reason: str
 
 
 class ForecastWindow(BaseModel):
@@ -181,13 +204,16 @@ class ForecastSynthesis(BaseModel):
     conflicts: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     uncertainty: str
+    tracking_version: str = "regime_v1"
+    regime_memory: dict[str, RegimeMemory] = Field(default_factory=dict)
+    regime_transitions: list[RegimeTransition] = Field(default_factory=list)
 
 
 class ForecastStrip(BaseModel):
     synthesis: ForecastSynthesis | None = None
     generated_at: str
     generated_at_iso: str | None = None
-    model_version: str = "rules_v2_evidence"
+    model_version: str = "rules_v3_persistence"
     evidence: list[str] = Field(default_factory=list)
     degraded: bool = False
     slots: list[ForecastSlot] = Field(default_factory=list)

@@ -26,3 +26,6 @@ metno_cache.json
 forecast_cache.json
 backups/
 weatherdash-backups/
+
+verification_report.json
+forecast_cache.lock

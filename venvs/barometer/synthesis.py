@@ -114,7 +114,7 @@ def model_windows(raw_metno, now):
     return windows
 
 
-def synthesise(snapshot, features, raw_metno, now=None):
+def synthesise(snapshot, features, raw_metno, now=None, previous=None):
     now = now or datetime.now(timezone.utc)
     ledger = build_evidence(snapshot, features, now)
     by_id = {e.id: e for e in ledger}
@@ -137,11 +137,15 @@ def synthesise(snapshot, features, raw_metno, now=None):
     if 'mist_potential' in by_id:
         regimes.append(RegimeAssessment(id='mist_potential', support='possible', evidence_ids=['mist_potential'], dependency_groups=['thermodynamics'], caveat='No visibility or cloud-base observation confirms fog.'))
 
+    from regime_tracking import track, VERSION
+    regimes, memory, transitions = track(regimes, snapshot, features, previous, now)
+
     windows = model_windows(raw_metno, now)
     wet = any(w.state == 'wet' for w in windows)
     covered_seconds = sum((datetime.fromisoformat(w.end)-datetime.fromisoformat(w.start)).total_seconds() for w in windows)
     complete = covered_seconds >= 6 * 3600
     limitations = [e.message for e in ledger if e.quality != 'ok']
+    limitations.extend(t.reason for t in transitions if t.state == 'withheld')
     if not complete:
         limitations.append('MET hourly precipitation does not cover the full next six hours; missing periods remain unknown.')
     # Compare patterns, not observed dry intervals against future wet intervals.
@@ -155,12 +159,20 @@ def synthesise(snapshot, features, raw_metno, now=None):
     summary = []
     if 'windy_now' in by_id:
         summary.append('It is currently windy at the station; persistence through all six hours is not assumed.')
-    if falling:
-        summary.append('Local pressure and moisture trends support deterioration.' if moistening else 'Falling local pressure suggests a possible deterioration.')
-    if any(r.id == 'possible_frontal_passage' for r in regimes):
-        summary.append('Pressure recovery, cooling and a wind shift suggest a possible recent frontal passage; showers may still persist.')
-    if any(r.id == 'mist_potential' for r in regimes):
-        summary.append('Local conditions permit mist or low cloud; fog is unconfirmed.')
+    for regime in regimes:
+        if regime.persistence == 'weakening':
+            summary.append({'deteriorating': 'The earlier deterioration signal is weakening.',
+                            'possible_frontal_passage': 'The earlier possible frontal-passage pattern is weakening.',
+                            'mist_potential': 'The earlier mist/low-cloud signal is weakening.'}[regime.id])
+        elif regime.id == 'deteriorating':
+            qualifier = 'Persistent local evidence' if regime.persistence == 'persistent' else 'An emerging local pattern'
+            summary.append(qualifier + ' supports possible deterioration; rain timing still comes from MET.')
+        elif regime.id == 'possible_frontal_passage':
+            qualifier = 'A persistent pattern' if regime.persistence == 'persistent' else 'An emerging pattern'
+            summary.append(qualifier + ' suggests possible recent frontal passage; a front is not confirmed and showers may persist.')
+        elif regime.id == 'mist_potential':
+            qualifier = 'Persistent local conditions' if regime.persistence == 'persistent' else 'Emerging local conditions'
+            summary.append(qualifier + ' permit mist or low cloud; fog is unconfirmed.')
     if wet:
         summary.append('MET forecasts rain in the indicated hourly windows; local sensors do not independently establish arrival time.')
     elif complete:
@@ -180,5 +192,6 @@ def synthesise(snapshot, features, raw_metno, now=None):
             expiry = min(expiry, datetime.fromisoformat(snapshot.observation_times[field]) + timedelta(minutes=10))
     return ForecastSynthesis(as_of=now.isoformat(), valid_until=expiry.isoformat(), summary=' '.join(summary),
         evidence=ledger, regimes=regimes, windows=windows, model_local_agreement=agreement,
-        conflicts=conflicts, limitations=limitations,
-        uncertainty='Qualitative evidence support, not a calibrated probability. Regimes are current assessments, not yet persistence-tracked.')
+        conflicts=conflicts, limitations=list(dict.fromkeys(limitations)),
+        tracking_version=VERSION, regime_memory=memory, regime_transitions=transitions,
+        uncertainty='Qualitative support, not calibrated probability. Persistent means repeated local evidence, not a confirmed meteorological event.')

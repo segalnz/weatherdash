@@ -47,6 +47,24 @@ def api_forecast():
     return _display_forecast()
 
 
+@app.get("/api/verification")
+def api_verification():
+    """Read the scheduled report; never run retrospective queries on display."""
+    import json
+    from pathlib import Path
+    path = Path(os.getenv("FORECAST_VERIFICATION_REPORT", "/var/lib/weatherdash/verification_report.json"))
+    try:
+        report = json.loads(path.read_text())
+        age = (datetime.now(timezone.utc)-datetime.fromisoformat(report['generated_at'])).total_seconds()
+        if report.get('schema_version') != 2 or not isinstance(report.get('cohorts'), list):
+            raise ValueError('Unsupported report')
+        if not -30 <= age < 3600:
+            return {'status': 'stale', 'message': 'Verification report awaiting a scheduled refresh.'}
+        return dict(report, status='ok')
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable', 'message': 'Verification results are not available yet.'}
+
+
 @app.get("/api/forecast/svg")
 def api_forecast_svg():
     strip = _display_forecast()
@@ -97,7 +115,7 @@ def _expire_pressure(strip, now):
             slot.pressure_tendency = PressureTendency.UNKNOWN
 
 
-def _build_forecast() -> ForecastStrip:
+def _build_forecast(previous_synthesis=None) -> ForecastStrip:
     now = datetime.now(timezone.utc)
 
     try:
@@ -190,6 +208,7 @@ def _build_forecast() -> ForecastStrip:
             evidence=slot_evidence,
             baseline_temperature_c=raw.get("temp"),
             baseline_wind_speed_kmh=metno_ws_kmh,
+            baseline_wind_dir_deg=raw_wd,
             baseline_precipitation_mm=raw.get("precipitation") if raw.get("precipitation_period_hours") == 1 else None,
             forecast_pressure_hpa=raw.get("pressure"),
             forecast_humidity_pct=raw.get("humidity"),
@@ -213,7 +232,7 @@ def _build_forecast() -> ForecastStrip:
         slots.append(slot)
 
     return ForecastStrip(
-        synthesis=synthesise(rooftop, derived, raw_metno, now),
+        synthesis=synthesise(rooftop, derived, raw_metno, now, previous=previous_synthesis),
         generated_at=generated,
         generated_at_iso=now.isoformat(),
         evidence=evidence,

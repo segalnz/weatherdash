@@ -59,11 +59,24 @@ baseline, with the existing bounded temperature adjustment. Future values are no
 changed by the new narrative layer. Issue-time archives now include the synthesis,
 local observation/feature snapshot and explicit model wind/rain baselines.
 
-**Proposed next:** regime persistence/hysteresis, expanded baseline verification,
-and better-separated quality and uncertainty reporting across the older hourly
-confidence display. These are not claimed to exist already. An LLM is optional
-for wording; the reasoning does not require one. See the
-[design review and implementation priorities](docs/forecast-design-review.md).
+Regime assessments now have restart-safe persistence and asymmetric entry/exit
+rules. A pattern needs at least ten minutes and three fresh observation cycles to
+be called persistent; this describes repeated evidence, not a confirmed front or
+fog event. Invalid evidence is withheld immediately. The previous successful
+forecast cache carries the memory, so dashboard reads cannot advance it.
+
+Verification now compares issue-time Weatherdash, MET and eligible persistence
+baselines on the same observations. It reports paired errors by lead time and
+persistent-regime context, plus complete-hour rain detection counts. The dashboard
+provides a comparison table, and `GET /api/verification` exposes the scheduled
+report. Missing baselines are never recreated from later observations. Read the
+[persistence and verification guide](docs/regimes-and-verification.md).
+
+**Proposed next:** evaluate the new records before changing local corrections;
+improve the older confidence display and consider independent regional/event
+observations. No calibrated probabilities or confirmed front/fog verification are
+claimed. An LLM remains optional for wording; the reasoning does not require one.
+See the [design review](docs/forecast-design-review.md).
 
 The approach fits observation-aware short-range forecasting; WMO describes
 [nowcasting and very-short-range forecasting](https://space.oscar.wmo.int/applicationareas/view/2_3_nowcasting_very_short_range_forecasting)
