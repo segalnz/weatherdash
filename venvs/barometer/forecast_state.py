@@ -197,6 +197,7 @@ class ForecastSynthesis(BaseModel):
     as_of: str
     valid_until: str
     summary: str
+    strip_explanation: str | None = None
     evidence: list[EvidenceItem] = Field(default_factory=list)
     regimes: list[RegimeAssessment] = Field(default_factory=list)
     windows: list[ForecastWindow] = Field(default_factory=list)

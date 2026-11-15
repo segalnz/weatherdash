@@ -1,5 +1,6 @@
 import math
 from html import escape
+import textwrap
 
 from forecast_state import (
     ForecastStrip,
@@ -32,10 +33,64 @@ GRID_COLOR = "#21262d"
 LINE_COLOR = "#00e5ff"
 
 
+def _basis_text(strip):
+    synthesis = strip.synthesis
+    if synthesis.strip_explanation:
+        return synthesis.strip_explanation
+    # Format existing facts only; this is not another forecast interpretation.
+    facts, groups = [], set()
+    for item in synthesis.evidence:
+        if item.quality != 'ok' or item.dependency_group in groups:
+            continue
+        value = item.value
+        labels = {
+            'pressure_falling': f'pressure {value:+.1f} hPa/3h' if value is not None else 'falling pressure',
+            'pressure_rising': f'pressure {value:+.1f} hPa/3h' if value is not None else 'rising pressure',
+            'pressure_steady': f'pressure {value:+.1f} hPa/3h' if value is not None else 'steady pressure',
+            'moisture_increasing': 'dew point rising',
+            'humidity_from_cooling': 'humidity rise consistent with cooling',
+            'temperature_cooling': 'temperature falling',
+            'windy_now': f'wind {value:.0f} km/h' if value is not None else 'windy locally',
+            'wind_increasing': 'wind increasing',
+            'wind_shift': 'wind direction changing',
+            'mist_potential': 'small dew-point spread and light wind',
+            'recent_rain': f'recent gauge rain {value:.1f} mm' if value is not None else 'recent gauge rain',
+            'recent_dry': 'recent gauge interval dry',
+        }
+        if item.id in labels:
+            facts.append(labels[item.id])
+            groups.add(item.dependency_group)
+    regional = 'MET Norway hourly guidance' if synthesis.windows else 'MET hourly rain guidance unavailable'
+    return regional + ('; local evidence: ' + '; '.join(facts) if facts else '; reliable local diagnostics limited')
+
+
+def _strip_notes(strip, width):
+    """At most five visible lines, with complete reasoning in the SVG description."""
+    capacity = max(12, int(width / (13 * .65)))
+    if strip.synthesis is None:
+        message = 'Forecast explanation awaiting a fresh outlook update.'
+        return textwrap.wrap(message, width=capacity, max_lines=2, placeholder='…'), message
+    synthesis = strip.synthesis
+    basis = _basis_text(strip)
+    notes = textwrap.wrap('Outlook: ' + ' '.join(synthesis.summary.split()), width=capacity, max_lines=2, placeholder='…')
+    notes += textwrap.wrap('Basis: ' + ' '.join(basis.split()), width=capacity, max_lines=2, placeholder='…')
+    cautions = synthesis.conflicts + synthesis.limitations
+    if cautions:
+        notice = 'Note: ' + cautions[0]
+        if len(cautions) > 1:
+            notice += f' ({len(cautions)-1} further limitations in the full outlook.)'
+        notes += textwrap.wrap(' '.join(notice.split()), width=capacity, max_lines=1, placeholder='…')
+    full = '\n'.join([synthesis.summary, 'Basis: ' + basis, *cautions, synthesis.uncertainty,
+                      'Detailed evidence:', *(item.message for item in synthesis.evidence)])
+    return notes, full
+
+
 def render_forecast_strip(strip: ForecastStrip) -> str:
     cols = len(strip.slots)
     total_w = cols * SLOT_W + MARGIN * 2
-    total_h = OFFSET_Y + SLOT_H + FOOTER_H
+    notes, full_explanation = _strip_notes(strip, total_w - 2 * MARGIN)
+    footer_h = max(FOOTER_H, 28 + len(notes) * 18)
+    total_h = OFFSET_Y + SLOT_H + footer_h
 
     tendency_arrow = _tendency_symbol(strip.pressure_tendency)
     tendency_label = _tendency_label(strip.pressure_tendency)
@@ -43,9 +98,10 @@ def render_forecast_strip(strip: ForecastStrip) -> str:
     lines = [f'<svg xmlns="http://www.w3.org/2000/svg"'
              f' width="{total_w}" height="{total_h}"'
              f' viewBox="0 0 {total_w} {total_h}"'
-             f' style="max-width:100%;height:auto">']
+             f' style="max-width:100%;height:auto" role="img" aria-labelledby="strip-title strip-description">']
 
-    lines.append('<title>' + escape('; '.join(strip.evidence)) + '</title>')
+    lines.append('<title id="strip-title">Six-hour forecast — ' + escape(strip.generated_at) + '</title>')
+    lines.append('<desc id="strip-description">' + escape(full_explanation) + '</desc>')
     lines.append(f'<rect width="100%" height="100%" fill="{BG}" rx="14"/>')
     lines.append(_defs_block())
 
@@ -57,9 +113,13 @@ def render_forecast_strip(strip: ForecastStrip) -> str:
         x = MARGIN + i * SLOT_W
         _draw_slot(lines, x, OFFSET_Y, slot, i)
 
-    for index, note in enumerate(strip.evidence[:2]):
-        lines.append(f'<text x="{MARGIN}" y="{total_h - 48 + index * 18}" fill="{TEXT_SECONDARY}" font-family="sans-serif" font-size="12">{escape(note[:160])}</text>')
-    lines.append(f'<text x="{MARGIN}" y="{total_h - 8}" fill="{TEXT_MUTED}" font-family="sans-serif" font-size="13">Moonshine Valley Barometer \u2014 {escape(strip.generated_at)} | evidence score, not rain probability</text>')
+    note_y = OFFSET_Y + SLOT_H + 20
+    for index, note in enumerate(notes):
+        lines.append(f'<text data-role="forecast-explanation" x="{MARGIN}" y="{note_y + index * 18}" fill="{TEXT_SECONDARY}" font-family="sans-serif" font-size="13">{escape(note)}</text>')
+    metadata = f'Moonshine Valley Barometer — {strip.generated_at} | evidence score, not rain probability'
+    capacity = max(12, int((total_w - 2 * MARGIN) / (13 * .65)))
+    metadata = textwrap.shorten(metadata, width=capacity, placeholder='…')
+    lines.append(f'<text x="{MARGIN}" y="{total_h - 8}" fill="{TEXT_MUTED}" font-family="sans-serif" font-size="13">{escape(metadata)}</text>')
     lines.append('</svg>')
     return "\n".join(lines)
 

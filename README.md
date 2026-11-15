@@ -21,23 +21,24 @@ corrected hPa readings; the application does not apply those corrections again.
 
 ## Forecasting approach: reason from evidence, without a local training prerequisite
 
-Weatherdash is intended to interpret observations in the manner of an experienced
-weather observer: assess the instruments, look at how conditions are changing,
-consider the regional forecast, and explain the likely sequence over the next six
-hours. A **large language model (LLM) assists in developing and refining the
-meteorological rules**: helping articulate relationships between observations,
-identify alternative explanations and translate that reasoning into explicit,
-inspectable code. The core uses those rules with current evidence, rather than
-fitting a site-specific predictor to months of labelled local weather outcomes.
+Weatherdash's intended core is a **runtime large language model (LLM) interpreter**.
+It receives recent local sensor histories, data-quality flags, derived trends and
+MET Norway guidance, then reasons about their combined meaning in the manner of an
+experienced weather observer. Its output should explain the likely next six hours,
+the evidence behind that interpretation, important alternatives and uncertainty.
 
-In the current implementation, the LLM contributes during design and development;
-it is not called for each forecast. The deployed engine applies the resulting
-rules deterministically and produces its outlook without a runtime LLM dependency.
-LLM-assisted rule development does not establish meteorological correctness or
-forecast skill: the rules remain hypotheses to test against observations and the
-MET baseline.
+Deterministic code prepares the evidence and checks the LLM's response. Incorrect
+facts or unsupported inferences should be returned to the LLM for correction;
+advisory disagreements should invite justification. The deterministic forecast is
+not silently substituted for the LLM's interpretation. If bounded revision cannot
+resolve a problem, that failure or disagreement must remain visible.
 
-This makes it useful before a large local archive exists. Individual diagnostics
+**Implementation status:** the deployed engine currently provides the deterministic
+baseline, evidence preparation, regime tracking and verification. Runtime LLM
+interpretation and its correction loop are **not connected yet**. LLM-assisted
+development of fixed rules is not equivalent to the intended runtime interpretation.
+
+The intended approach does not require first training a new site-specific model. Individual diagnostics
 still need enough recent observations: for example, a three-hour pressure trend
 requires suitable coverage over that period. Longer archives remain essential for
 checking forecast skill and improving rules. Some ML approaches can use pretrained
@@ -95,8 +96,8 @@ report. Missing baselines are never recreated from later observations. Read the
 **Proposed next:** evaluate the new records before changing local corrections;
 improve the older confidence display and consider independent regional/event
 observations. No calibrated probabilities or confirmed front/fog verification are
-claimed. Beyond its current rule-development role, an LLM could optionally help
-word future outlooks; runtime LLM synthesis is not part of the deployed engine.
+claimed. The next architectural step is runtime LLM interpretation with a
+challenge-and-revision loop, rather than using an LLM only to word a fixed result.
 See the [design review](docs/forecast-design-review.md).
 
 The approach fits observation-aware short-range forecasting; WMO describes
@@ -124,6 +125,18 @@ Local observations inform current conditions and pressure trends. Future slots u
 fresh, correctly timed MET predictions. Pressure and humidity alone do not establish
 rain or its arrival time. Missing or invalid evidence stays unknown. Confidence is
 a heuristic display score, not a calibrated probability.
+
+## Seeing the forecast basis
+
+The six-hour SVG strip displays wrapped **Outlook** and **Basis** text beneath the
+hourly slots, plus an important limitation when present. The footer grows modestly
+when needed; longer explanations remain in the dashboard panel and the SVG's
+accessible description. A stale explanation is withheld rather than shown as current.
+
+The API supports `synthesis.strip_explanation` for a concise interpreter-supplied
+rationale. Once runtime LLM integration exists, its validated explanation should be
+published there. Until then, the strip honestly displays the current baseline's
+summary and existing evidence; this does not imply an LLM has interpreted the data.
 
 ## Repository layout
 
