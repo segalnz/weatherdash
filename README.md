@@ -9,6 +9,60 @@ The current pressure source is a BMP388 LoRaWAN node routed through ChirpStack.
 Firmware performs pressure compensation and correction. Weatherdash accepts the
 already-corrected pressure in hPa; it does not apply those corrections again.
 
+## Forecasting approach: reason from evidence, without a local training prerequisite
+
+Weatherdash is intended to interpret observations in the manner of an experienced
+weather observer: assess the instruments, look at how conditions are changing,
+consider the regional forecast, and explain the likely sequence over the next six
+hours. The core is explicit meteorological rules and evidence, rather than fitting
+a site-specific predictor to months of labelled local weather outcomes.
+
+This makes it useful before a large local archive exists. Individual diagnostics
+still need enough recent observations: for example, a three-hour pressure trend
+requires suitable coverage over that period. Longer archives remain essential for
+checking forecast skill and improving rules. Some ML approaches can use pretrained
+models without months of site-specific data; Weatherdash's distinction is that
+**local model training is not a prerequisite for its core reasoning**.
+
+The intended process is:
+
+1. **Check the evidence.** Verify sensor freshness, validity and coverage; treat
+   missing readings as unknown. Distinguish atmospheric change from sensor faults.
+2. **Interpret related changes together.** Falling pressure, moisture changes and
+   sustained wind shifts may support a developing weather regime. Rising relative
+   humidity caused by cooling is not an independent rain signal.
+3. **Compare with MET Norway.** Use the cloud forecast as the regional baseline,
+   then identify where local observations support it, differ from it or are
+   insufficient to judge it. Separate agreement from independent corroboration.
+4. **Make bounded, traceable adjustments.** Give observations more influence near
+   the present and let unsupported local persistence decay with lead time. A
+   temperature adjustment does not justify inventing a rain onset or probability.
+5. **Explain one consolidated outlook.** Describe the likely evolution, important
+   alternatives and uncertainty, backed by hourly details and an audit trail.
+6. **Verify as data accumulates.** Compare issued forecasts with later observations
+   and with MET alone, so plausible-sounding adjustments must demonstrate value.
+
+For example, falling pressure and a rising dew point may support deterioration
+already forecast by MET. They do not locate an incoming rain band or establish its
+arrival time. Likewise, high humidity alone cannot confirm rain or fog.
+
+**Implemented today:** sensor quality checks, time-aware trends, local explanatory
+rules, observation-based current conditions, coherent MET hourly future forecasts,
+a bounded decaying temperature adjustment, and issue-time archiving/verification.
+Local reasoning already explains several patterns, but future rain/cloud states
+and wind remain largely MET-driven.
+
+**Proposed next:** structured evidence and competing regime hypotheses, explicit
+model/local disagreement, a consolidated six-hour narrative, and better-separated
+quality and uncertainty reporting. These are design improvements, not features
+claimed to exist already. An LLM is optional for wording; the reasoning does not
+require one. See the [design review and implementation priorities](docs/forecast-design-review.md).
+
+The approach fits observation-aware short-range forecasting; WMO describes
+[nowcasting and very-short-range forecasting](https://space.oscar.wmo.int/applicationareas/view/2_3_nowcasting_very_short_range_forecasting)
+in this context. MET's [time and interval semantics](https://docs.api.met.no/doc/ForecastJSON)
+remain authoritative for interpreting its hourly guidance.
+
 ## Data flow
 
 ```text
