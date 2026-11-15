@@ -24,8 +24,18 @@ corrected hPa readings; the application does not apply those corrections again.
 Weatherdash is intended to interpret observations in the manner of an experienced
 weather observer: assess the instruments, look at how conditions are changing,
 consider the regional forecast, and explain the likely sequence over the next six
-hours. The core is explicit meteorological rules and evidence, rather than fitting
-a site-specific predictor to months of labelled local weather outcomes.
+hours. A **large language model (LLM) assists in developing and refining the
+meteorological rules**: helping articulate relationships between observations,
+identify alternative explanations and translate that reasoning into explicit,
+inspectable code. The core uses those rules with current evidence, rather than
+fitting a site-specific predictor to months of labelled local weather outcomes.
+
+In the current implementation, the LLM contributes during design and development;
+it is not called for each forecast. The deployed engine applies the resulting
+rules deterministically and produces its outlook without a runtime LLM dependency.
+LLM-assisted rule development does not establish meteorological correctness or
+forecast skill: the rules remain hypotheses to test against observations and the
+MET baseline.
 
 This makes it useful before a large local archive exists. Individual diagnostics
 still need enough recent observations: for example, a three-hour pressure trend
@@ -85,7 +95,8 @@ report. Missing baselines are never recreated from later observations. Read the
 **Proposed next:** evaluate the new records before changing local corrections;
 improve the older confidence display and consider independent regional/event
 observations. No calibrated probabilities or confirmed front/fog verification are
-claimed. An LLM remains optional for wording; the reasoning does not require one.
+claimed. Beyond its current rule-development role, an LLM could optionally help
+word future outlooks; runtime LLM synthesis is not part of the deployed engine.
 See the [design review](docs/forecast-design-review.md).
 
 The approach fits observation-aware short-range forecasting; WMO describes
