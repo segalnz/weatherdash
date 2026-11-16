@@ -178,8 +178,8 @@ def get_recent_hours_data(hours: int = 4) -> pd.DataFrame:
     return df
 
 
-def get_recent_pressure(hours: int = 6) -> pd.DataFrame:
-    stop = datetime.now(timezone.utc)
+def get_recent_pressure(hours: int = 6, now: datetime | None = None) -> pd.DataFrame:
+    stop = now or datetime.now(timezone.utc)
     start = stop - timedelta(hours=hours)
 
     data = [{"_time": stamp, "pressure": value} for stamp, value in pressure_means(start, stop)]
@@ -195,6 +195,9 @@ def pressure_means(start, stop):
     bins = series.resample("5min", label="right", closed="left")
     # Explicit invalid readings poison their bin; empty bins remain null.
     means = bins.agg(lambda values: values.mean() if len(values) and values.notna().all() else float("nan"))
+    # A right-labelled partial bucket can end after the collection time.
+    # It is not an observation from the future: publish completed buckets only.
+    means = means.loc[means.index <= pd.Timestamp(stop)]
     return list(means.items())
 
 

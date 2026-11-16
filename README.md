@@ -131,6 +131,20 @@ evidence. Pressure and humidity alone do not establish precise rain arrival.
 Missing or invalid evidence stays unknown. LLM support labels are qualitative,
 not calibrated probabilities.
 
+## Pressure curve
+
+The curve above the future hourly columns shows **observed pressure at Now followed
+by the LLM's six-hour local-pressure outlook**, aligned with those displayed hours.
+It is not the previous six hours of observations stretched across future columns.
+The caption identifies its source and units. Local measurements are not spliced
+onto MET's potentially different absolute sea-level reference.
+
+Sensor-history gaps remain in the historical API/input data and are not painted as
+forecast holes. Unfinished five-minute history buckets are withheld until complete,
+so their bucket-end labels cannot appear in the future. Partial forecast output is
+returned to the LLM for correction; if no coherent pressure outlook can be supported,
+the chart says unavailable rather than inventing or joining missing predictions.
+
 ## Seeing the forecast basis
 
 The six-hour SVG strip displays wrapped **Outlook** and **Basis** text beneath the

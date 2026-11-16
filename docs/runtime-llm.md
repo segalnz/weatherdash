@@ -12,7 +12,7 @@ provider; the verified available `deepseek-flash` model is used instead.
    trends and coherent MET forecasts. Preserve missing values, timestamps and units.
 2. Supply those facts, advisory diagnostics, persisted regime assessments, an exact
    evidence-reference catalog and the required JSON schema to the LLM.
-3. Receive its six hourly forecasts, summary, compact basis, uncertainty, alternative,
+3. Receive its six hourly forecasts (including local corrected pressure), summary, compact basis, uncertainty, alternative,
    input claims and references. Current numerical readings remain instrument data.
 4. Validate facts, timing, schema, ranges, references, acknowledged limitations and
    kiosk text fit. Return specific problems to the LLM with its previous response.
@@ -116,9 +116,10 @@ validation findings, provider-reported model and token usage. They contain neith
 provider keys/headers nor private reasoning content. `forecast_synthesis` records
 retain status/input/model/attempt metadata and findings. Hourly forecasts retain MET
 and issue-time persistence baselines for paired verification, with a separate model
-version for runtime interpretation. Future pressure/humidity are retained as MET
-reference fields, not misrepresented or scored as LLM predictions when the response
-schema does not predict them.
+version for runtime interpretation. Future pressure is now an LLM prediction in the same corrected-local basis as the
+gauge; MET pressure remains an explicit baseline/reference. Future humidity remains
+a MET reference field and is not scored as an LLM prediction. Pressure error
+comparisons must account for the documented local/MET reduction/calibration offset.
 
 The correction protocol has been tested with mocks and with real DeepSeek calls:
 a deliberately corrupted **preview-only** claim was rejected, returned to the
@@ -137,3 +138,26 @@ probability-calibration claims are not supported.
 Official interface references: [DeepSeek JSON output](https://api-docs.deepseek.com/guides/json_mode/),
 [chat completions](https://api-docs.deepseek.com/api/create-chat-completion/), and
 [thinking mode controls](https://api-docs.deepseek.com/guides/thinking_mode/).
+
+
+## Pressure outlook correction — 17 November 2026
+
+`runtime_v2_pressure` adds required nullable `pressure_hpa` to each returned hour.
+The model must provide a coherent complete curve or explicitly withhold all six
+pressures; isolated null holes trigger correction. If all local/MET pressure inputs
+are present but the model withholds the curve, that becomes an advisory challenge
+which it must revise or justify. A first-step jump over 3 hPa triggers a check for
+an accidental splice of absolute MET pressure onto the local gauge. It remains an
+advisory, not an automatically substituted pressure value.
+
+The strip uses observed Now plus LLM future pressure at the future column centres.
+The old observed-history curve was misleading in that location and is no longer
+used there. Genuine history gaps remain available for evidence assessment. Only
+completed five-minute history averages are published, with a common collection
+cutoff; a right-labelled unfinished bucket cannot appear as a future observation.
+
+The deterministic-reference development mode, if explicitly enabled, plots only
+MET's reference series and labels it accordingly; it does not attach local Now to
+a different pressure frame. Unavailable forecast points are labelled, not silently
+filled or replaced by historical measurements. Model versions beginning `llm_v2_`
+separate these pressure predictions from earlier runtime versions for verification.

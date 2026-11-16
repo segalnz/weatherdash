@@ -31,7 +31,7 @@ def fixture():
         uncertainty='Local history is incomplete and rain arrival cannot be timed independently.',alternative='An isolated shower remains an alternative if the regional evolution changes.',
         model_local_agreement='mixed',claims=[dict(reference='observations.temperature_c',value=15)],
         acknowledged_limitations=[l['id'] for l in payload['limitations']],advisory_responses=[],
-        hours=[dict(hour_offset=r['hour_offset'],valid_time=r['valid_time'],state='partly_cloudy',label='Partly cloudy',temperature_c=15,
+        hours=[dict(hour_offset=r['hour_offset'],valid_time=r['valid_time'],state='partly_cloudy',label='Partly cloudy',temperature_c=15,pressure_hpa=1004,
                     wind_speed_kmh=12,wind_direction_deg=270,precipitation_mm=0,confidence='medium',
                     rationale='The regional guidance remains dry; local pressure alone cannot locate incoming rain.',
                     evidence_references=[f'met_forecast.{i}.temperature_c']) for i,r in payload['met_forecast'].items()])
@@ -157,7 +157,7 @@ class RuntimeLLMTests(unittest.TestCase):
         parsed,hard,advisory=llm.validate(response,payload,set())
         self.assertFalse(hard);self.assertFalse(advisory);self.assertEqual(parsed.hours[0].temperature_c,0)
         for hour in response['hours']:
-            hour.update(state='unknown',temperature_c=None,wind_speed_kmh=None,wind_direction_deg=None,precipitation_mm=None,evidence_references=[],confidence='low')
+            hour.update(state='unknown',temperature_c=None,pressure_hpa=None,wind_speed_kmh=None,wind_direction_deg=None,precipitation_mm=None,evidence_references=[],confidence='low')
         parsed,hard,_=llm.validate(response,payload,set())
         self.assertFalse(hard);self.assertIsNone(parsed.hours[0].temperature_c)
 
@@ -195,6 +195,27 @@ class RuntimeLLMTests(unittest.TestCase):
         response['summary']='Dry intervals are possible around 17:00 local, with uncertain cloud changes.'
         _,hard,_=llm.validate(response,payload,set())
         self.assertFalse(hard)
+
+    def test_pressure_forecast_is_published_in_local_basis(self):
+        strip,payload,response=fixture();response['hours'][0]['pressure_hpa']=1004.5
+        call,_=transport([response]);result,trace=llm.interpret(payload,call)
+        llm.apply_interpretation(strip,payload,result,trace)
+        self.assertEqual(strip.slots[1].forecast_pressure_hpa,1004.5)
+        self.assertEqual(strip.rooftop.pressure_hpa,1004)
+        self.assertTrue(strip.model_version.startswith('llm_v2_'))
+
+    def test_partial_pressure_outlook_is_sent_back_for_correction(self):
+        _,payload,response=fixture();partial=copy.deepcopy(response);partial['hours'][2]['pressure_hpa']=None
+        call,calls=transport([partial,response]);result,trace=llm.interpret(payload,call)
+        self.assertEqual(trace['status'],'validated');self.assertEqual(len(calls),2)
+        self.assertIn('pressure_coverage',{h['id'] for h in trace['attempts'][0]['hard']})
+        self.assertTrue(all(h.pressure_hpa is not None for h in result.hours))
+
+    def test_pressure_reference_jump_is_challenged_not_silently_corrected(self):
+        _,payload,response=fixture();response['hours'][0]['pressure_hpa']=1014
+        _,hard,advisory=llm.validate(response,payload,set())
+        self.assertFalse(hard)
+        self.assertIn('pressure_first_step',{h['id'] for h in advisory})
 
     def test_audit_contains_initial_response_and_correction(self):
         _,payload,response=fixture();bad=copy.deepcopy(response);bad['claims'][0]['value']=100

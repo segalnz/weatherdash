@@ -104,9 +104,6 @@ def render_forecast_strip(strip: ForecastStrip) -> str:
     footer_h = max(FOOTER_H, 28 + len(notes) * 18)
     total_h = OFFSET_Y + SLOT_H + footer_h
 
-    tendency_arrow = _tendency_symbol(strip.pressure_tendency)
-    tendency_label = _tendency_label(strip.pressure_tendency)
-
     lines = [f'<svg xmlns="http://www.w3.org/2000/svg"'
              f' width="{total_w}" height="{total_h}"'
              f' viewBox="0 0 {total_w} {total_h}"'
@@ -116,8 +113,6 @@ def render_forecast_strip(strip: ForecastStrip) -> str:
     lines.append('<desc id="strip-description">' + escape(full_explanation) + '</desc>')
     lines.append(f'<rect width="100%" height="100%" fill="{BG}" rx="14"/>')
     lines.append(_defs_block())
-
-    lines.append(f'<text x="{MARGIN}" y="28" fill="{TEXT_SECONDARY}" font-family="sans-serif" font-size="15" font-weight="bold">Pressure: {tendency_arrow} {tendency_label} | observed history, last 6h</text>')
 
     _draw_pressure_graph(lines, strip)
 
@@ -150,69 +145,70 @@ def _defs_block() -> str:
     )
 
 
+def _pressure_outlook(strip):
+    slots=strip.slots
+    llm=any(getattr(slot, 'source', '') == 'llm-runtime' for slot in slots[1:])
+    reference=not llm and any(getattr(slot, 'source', '').startswith('metno') for slot in slots[1:])
+    if not slots:
+        return [], 'unavailable'
+    if llm:
+        now=strip.rooftop.pressure_hpa if strip.rooftop else None
+        return [now]+[getattr(slot,'forecast_pressure_hpa',None) for slot in slots[1:]], 'llm-runtime'
+    if reference:
+        # Do not splice a local gauge with a different pressure reduction/calibration.
+        return [getattr(slot,'baseline_pressure_hpa',None) for slot in slots], 'metno-reference'
+    return [None]*len(slots), 'unavailable'
+
+
 def _draw_pressure_graph(lines: list, strip: ForecastStrip):
-    gh = GRAPH_H
-    gy = GRAPH_Y
-    gx = MARGIN
-    gw = len(strip.slots) * SLOT_W - 10
-
-    his = strip.pressure_history
-    times = strip.pressure_history_times
-
-    finite_values = [v for v in his if v is not None and math.isfinite(v)]
-    if not finite_values:
+    """Future pressure aligned with the future slots, never historical sensor bins."""
+    values,source=_pressure_outlook(strip)
+    valid=lambda value: value is not None and math.isfinite(value) and value>0
+    future=[value for value in values[1:] if valid(value)]
+    if future and source=='llm-runtime':
+        observed=f'{values[0]:.1f} hPa' if valid(values[0]) else 'unavailable'
+        caption=f'Pressure outlook — local hPa, LLM forecast | observed Now: {observed}; tendency: {_tendency_label(strip.pressure_tendency)}'
+    elif future and source=='metno-reference':
+        caption='Pressure outlook — MET sea-level reference, next 6h | local observations are not spliced into this reference'
+    else:
+        caption='Pressure outlook unavailable — historical observations are not future forecast points'
+    lines.append(f'<text x="{MARGIN}" y="28" fill="{TEXT_SECONDARY}" font-family="sans-serif" font-size="14" font-weight="bold">{escape(caption)}</text>')
+    if not future:
+        lines.append(f'<text x="{MARGIN + 20}" y="{GRAPH_Y + 50}" fill="{TEXT_MUTED}" font-family="sans-serif" font-size="13">Awaiting a validated pressure outlook; no curve invented or filled.</text>')
         return
-
-    p_min = min(finite_values)
-    p_max = max(finite_values)
-    pad = max((p_max - p_min) * 0.3, 0.3)
-    p_lo = math.floor((p_min - pad) / 1.0) * 1.0
-    p_hi = math.ceil((p_max + pad) / 1.0) * 1.0
-    p_range = p_hi - p_lo
-
-    lines.append(f'<rect x="{gx}" y="{gy}" width="{gw}" height="{gh}" rx="6" fill="{GRAPH_BG}"/>')
-
-    n_ticks = max(2, int(gh / 28))
-    for i in range(n_ticks + 1):
-        y_tick = gy + gh - (gh * i / n_ticks)
-        val = p_lo + p_range * i / n_ticks
-        lines.append(f'<line x1="{gx + 30}" y1="{y_tick:.1f}" x2="{gx + gw}" y2="{y_tick:.1f}" stroke="{GRID_COLOR}" stroke-width="1"/>')
-        lines.append(f'<text x="{gx + 26}" y="{y_tick + 4}" fill="{TEXT_MUTED}" font-family="sans-serif" font-size="10" text-anchor="end" font-weight="bold">{val:.0f}</text>')
-
-    hist_w = gw - 30
-    hist_x0 = gx + 30
-
-    from datetime import datetime
-    stamps = [datetime.fromisoformat(value).timestamp() for value in strip.pressure_history_timestamps]
-    def _x_hist(idx, total):
-        if len(stamps) == total and total > 1 and stamps[-1] > stamps[0]:
-            return hist_x0 + hist_w * (stamps[idx] - stamps[0]) / (stamps[-1] - stamps[0])
-        return hist_x0 + hist_w * idx / max(total - 1, 1)
-
-    def _y(val):
-        return gy + gh - gh * (val - p_lo) / p_range
-
-    his_n = len(his)
-    # Split the line at missing/invalid observations; never bridge a gap.
-    segment = []
-    for i, value in enumerate(his):
-        if value is not None and math.isfinite(value):
-            segment.append(f"{_x_hist(i, his_n):.1f},{_y(value):.1f}")
+    finite_values=[value for value in values if valid(value)]
+    low,high=min(finite_values),max(finite_values)
+    pad=max((high-low)*.3,.3)
+    floor=math.floor(low-pad);ceiling=math.ceil(high+pad)
+    span=ceiling-floor
+    gx=MARGIN;gy=GRAPH_Y;gw=len(strip.slots)*SLOT_W-10
+    lines.append(f'<rect x="{gx}" y="{gy}" width="{gw}" height="{GRAPH_H}" rx="6" fill="{GRAPH_BG}"/>')
+    for i in range(4):
+        y=gy+GRAPH_H-GRAPH_H*i/3
+        value=floor+span*i/3
+        lines.append(f'<line x1="{gx+40}" y1="{y:.1f}" x2="{gx+gw}" y2="{y:.1f}" stroke="{GRID_COLOR}"/>')
+        lines.append(f'<text x="{gx+35}" y="{y+4:.1f}" fill="{TEXT_MUTED}" font-family="sans-serif" font-size="10" text-anchor="end">{value:.1f}</text>')
+    x=lambda index:MARGIN+index*SLOT_W+(SLOT_W-10)/2
+    y=lambda value:gy+GRAPH_H-GRAPH_H*(value-floor)/span
+    segment=[]
+    for i,value in enumerate(values):
+        if valid(value):
+            segment.append(f'{x(i):.1f},{y(value):.1f}')
         else:
-            if len(segment) >= 2:
-                pts = " ".join(segment)
-                lines.append(f'<polyline points="{pts}" fill="none" stroke="{LINE_COLOR}" stroke-width="2"/>')
-            segment = []
-    if len(segment) >= 2:
-        pts = " ".join(segment)
-        lines.append(f'<polyline points="{pts}" fill="none" stroke="{LINE_COLOR}" stroke-width="2"/>')
-
-    for i in range(7):
-        index = round((his_n - 1) * i / 6)
-        dx = _x_hist(index, his_n)
-        t = times[index] if index < len(times) else ""
-        col = TEXT_SECONDARY if i == 6 else TEXT_MUTED
-        lines.append(f'<text x="{dx:.1f}" y="{gy + gh + 12}" fill="{col}" font-family="sans-serif" font-size="9" text-anchor="middle" font-weight="bold">{t}</text>')
+            if len(segment)>=2:
+                lines.append(f'<polyline data-role="pressure-outlook" points="{" ".join(segment)}" fill="none" stroke="{LINE_COLOR}" stroke-width="2"/>')
+            segment=[]
+    if len(segment)>=2:
+        lines.append(f'<polyline data-role="pressure-outlook" points="{" ".join(segment)}" fill="none" stroke="{LINE_COLOR}" stroke-width="2"/>')
+    for i,(slot,value) in enumerate(zip(strip.slots,values)):
+        label='Now' if i==0 else getattr(slot,'time_label','')
+        lines.append(f'<text x="{x(i):.1f}" y="{gy+GRAPH_H+12}" fill="{TEXT_MUTED}" font-family="sans-serif" font-size="10" text-anchor="middle">{escape(label)}</text>')
+        if valid(value):
+            point_source='observed' if i==0 and source=='llm-runtime' else source
+            color=NOW_COLOR if point_source=='observed' else LINE_COLOR
+            lines.append(f'<circle data-role="pressure-forecast-point" data-source="{point_source}" data-value="{value:.3f}" cx="{x(i):.1f}" cy="{y(value):.1f}" r="3" fill="{color}"/>')
+        else:
+            lines.append(f'<text data-role="pressure-unavailable" x="{x(i):.1f}" y="{gy+25}" fill="{TEXT_MUTED}" font-family="sans-serif" font-size="10" text-anchor="middle">Unavailable</text>')
 
 
 def _slot_icon(slot: ForecastSlot) -> str:

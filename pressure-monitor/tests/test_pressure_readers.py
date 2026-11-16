@@ -32,12 +32,13 @@ class ReaderTests(unittest.TestCase):
    vals=reader.pressure_means(now,now+timedelta(hours=1))
    self.assertTrue(all(math.isnan(v) for _,v in vals[:3]))
    self.assertEqual(vals[-1][1],1005)
- def test_null_history_serialization_and_svg_gaps(self):
+ def test_historical_gaps_serialize_but_are_not_drawn_as_forecasts(self):
   strip=ForecastStrip.model_construct(pressure_history=[1004,1005,None,1006,1007],pressure_history_times=['00:00']*5,pressure_history_timestamps=[],slots=[None]*7)
   JSONResponse({'pressure_history':strip.pressure_history})
   lines=[];_draw_pressure_graph(lines,strip)
-  self.assertEqual(sum('<polyline ' in l for l in lines),2)
-  strip.pressure_history=[None,None];lines=[];_draw_pressure_graph(lines,strip);self.assertEqual(lines,[])
+  self.assertEqual(sum('<polyline ' in l for l in lines),0)
+  self.assertTrue(any('Pressure outlook unavailable' in l for l in lines))
+  strip.pressure_history=[None,None];lines=[];_draw_pressure_graph(lines,strip);self.assertEqual(sum('<polyline ' in l for l in lines),0)
  def test_build_forecast_with_missing_history_bins(self):
   from forecast_state import RooftopSnapshot
   now=datetime.now(timezone.utc)
@@ -55,6 +56,13 @@ class ReaderTests(unittest.TestCase):
   main._expire_pressure(strip,now)
   self.assertIsNone(strip.rooftop.pressure_hpa)
   self.assertIsNone(strip.derived.pressure_delta_3h)
+ def test_unfinished_pressure_bucket_is_never_labelled_in_the_future(self):
+  stop=datetime(2026,11,17,0,3,tzinfo=timezone.utc)
+  rows=[Record(stop-timedelta(minutes=8),1004),Record(stop-timedelta(minutes=1),1005)]
+  with patch.object(reader,'pressure_rows',return_value=rows):
+   values=reader.pressure_means(stop-timedelta(hours=1),stop)
+  self.assertTrue(all(stamp<=stop for stamp,_ in values))
+  self.assertEqual(values[-1][0],pd.Timestamp(stop.replace(minute=0)))
  def test_source_query_is_explicit(self):
   with patch.object(reader,'query_flux',return_value=[]) as query:
    now=datetime.now(timezone.utc);reader.pressure_rows(now-timedelta(hours=1),now)

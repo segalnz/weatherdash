@@ -147,7 +147,7 @@ def _build_forecast(previous_synthesis=None) -> ForecastStrip:
         fraction = (now.minute * 60 + now.second) / 3600
         current_model["temp"] += fraction * (raw_metno[1]["temp"] - current_model["temp"])
 
-    press_df = get_recent_pressure(hours=6)
+    press_df = get_recent_pressure(hours=6, now=now)
     pressure_history: list[float | None] = []
     pressure_times: list[str] = []
     pressure_timestamps: list[str] = []

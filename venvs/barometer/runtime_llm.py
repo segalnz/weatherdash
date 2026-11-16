@@ -44,6 +44,7 @@ class InterpretedHour(StrictModel):
     state: AtmosphericState
     label: str = Field(min_length=1, max_length=32)
     temperature_c: float | None = Field(ge=-60, le=65, strict=True)
+    pressure_hpa: float | None = Field(gt=0, lt=2000, strict=True)
     wind_speed_kmh: float | None = Field(ge=0, le=250, strict=True)
     wind_direction_deg: float | None = Field(ge=0, le=360, strict=True)
     precipitation_mm: float | None = Field(ge=0, le=200, strict=True)
@@ -74,7 +75,7 @@ Use exact input_id and the six supplied hour offsets/valid times. Any clock time
 Model precipitation applies to the hour STARTING at its valid_time. Gauge rain is a past interval, not an instantaneous rain detector.
 Missing values are unknown, never zero. Null is permitted in uncertain predictions. Preserve genuine zero values.
 Do not invent observations, visibility/radar evidence, sensor health or probabilities. Any numeric observation stated must have a matching claim.
-claims reference exact paths in observations, trends, history or met_forecast (e.g. observations.temperature_c, trends.pressure_delta_3h,
+claims reference exact paths in observations, trends, history, met_current or met_forecast (e.g. observations.temperature_c, trends.pressure_delta_3h,
 met_forecast.2.temperature_c, history.pressure_hpa.points.0.value). Claim values must match those inputs.
 met_forecast is a DICTIONARY keyed by hour offset "1" through "6", NOT a zero-indexed list.
 Use paths/values from evidence_catalog for exact claims; do not cite null values as supporting evidence.
@@ -82,6 +83,7 @@ Set advisory_responses=[] initially; only answer challenge_ids actually sent by 
 Use all required limitation IDs in acknowledged_limitations and reflect material limitations in uncertainty.
 Hourly evidence_references must cite existing non-null paths, not deterministic narrative strings.
 You may disagree with MET or advisory rules, but explain departures; pressure/humidity alone do not establish precise rain arrival or amounts.
+Provide one coherent local-pressure outlook in pressure_hpa for all six hours, using the SAME corrected local measurement basis as observations.pressure_hpa. Compare relative MET pressure evolution with local history; do not blindly splice the absolute MET sea-level values onto a local gauge with a calibration offset. Do not re-correct observations. If pressure cannot be interpreted reliably, use null for ALL six pressures and explain why; do not leave isolated gaps.
 Use state unknown with null predictions where evidence is insufficient. Avoid probability percentages.
 KIOSK: aim for summary <=180 characters, strip_explanation <=160, uncertainty <=90. Hard maxima are 240/220/120 respectively. Plain English text, ordinary punctuation, no emoji, no markdown, no newlines.
 strip_explanation must identify the key evidence behind your forecast, not just repeat the outlook. Fit the limits; never rely on scrolling.
@@ -180,7 +182,7 @@ def make_payload(strip, roof_history, rain_history, pressure_history):
         'gust_kmh':series(roof_history,'gust','km/h',5,3.6,as_of=now),
         'rainfall_mm':series(rain_history,'rainfall_mm','mm per completed 10-minute interval',10,as_of=now,interval_start=True)}
     from zoneinfo import ZoneInfo
-    payload=clean(dict(schema_version=1,prompt_version='runtime_v1',as_of=strip.generated_at_iso,
+    payload=clean(dict(schema_version=1,prompt_version='runtime_v2_pressure',as_of=strip.generated_at_iso,
         local_time=now.astimezone(ZoneInfo('Pacific/Auckland')).isoformat(),
         outlook_window={'start_local':now.astimezone(ZoneInfo('Pacific/Auckland')).isoformat(),'end_local':(now+timedelta(hours=6)).astimezone(ZoneInfo('Pacific/Auckland')).isoformat()},
         trend_units={'pressure_delta_1h':'hPa / 1h','pressure_delta_3h':'hPa / 3h','temp_delta_1h':'C / 1h','dewpoint_delta_1h':'C / 1h','humidity_delta_1h':'percentage-point / 1h','wind_speed_delta_1h':'km/h / 1h','wind_dir_change_1h':'degrees','rain_persistence_1h':'fraction of observed recent gauge intervals'},
@@ -205,6 +207,9 @@ def make_payload(strip, roof_history, rain_history, pressure_history):
     for item in payload['advisory_diagnostics']:
         if item.get('unit')=='m/s' and item.get('value') is not None:
             item['value']=clean(item['value']*3.6);item['unit']='km/h'
+    current=strip.slots[0] if strip.slots else None
+    payload['met_current']={'pressure_hpa':current.baseline_pressure_hpa if current else None,'valid_time':current.forecast_valid_time if current else None,'basis':'MET sea-level pressure reference; local calibration may differ'}
+    if payload['met_current']['pressure_hpa'] is not None:catalog['met_current.pressure_hpa']=payload['met_current']['pressure_hpa']
     payload['evidence_catalog']=catalog
     payload['input_id']=hashlib.sha256(json.dumps(payload,sort_keys=True,allow_nan=False).encode()).hexdigest()
     return payload
@@ -212,7 +217,7 @@ def make_payload(strip, roof_history, rain_history, pressure_history):
 
 def resolve(payload, reference):
     parts=reference.split('.')
-    if parts[0] not in ('observations','trends','history','met_forecast'):
+    if parts[0] not in ('observations','trends','history','met_forecast','met_current'):
         raise ValueError('Unsupported evidence root')
     value=payload
     try:
@@ -277,7 +282,7 @@ def validate(raw,payload,challenged):
         except ValueError:
             return False
     for h in parsed.hours:
-        has_prediction=h.state!=AtmosphericState.UNKNOWN or any(v is not None for v in (h.temperature_c,h.wind_speed_kmh,h.wind_direction_deg,h.precipitation_mm))
+        has_prediction=h.state!=AtmosphericState.UNKNOWN or any(v is not None for v in (h.temperature_c,h.wind_speed_kmh,h.wind_direction_deg,h.precipitation_mm,h.pressure_hpa))
         if has_prediction and not any(substantive(r) for r in h.evidence_references):
             hard.append({'id':f'h{h.hour_offset}.support','message':'A prediction needs numeric observation/trend/model evidence or a MET weather symbol, not timestamps or quality labels alone.'})
     for response in parsed.advisory_responses:
@@ -332,6 +337,15 @@ def validate(raw,payload,challenged):
             differences.append(('high_support','Explain high support despite the flagged/missing inputs, or lower it.'))
         for name,message in differences:
             advisory.append({'id':f'h{h.hour_offset}.{name}','message':message})
+    pressures=[h.pressure_hpa for h in parsed.hours]
+    if any(p is None for p in pressures) and any(p is not None for p in pressures):
+        hard.append({'id':'pressure_coverage','message':'Do not leave isolated pressure-forecast gaps. Supply a coherent six-hour local-pressure outlook, or withdraw all six pressures and explain why it cannot be interpreted.'})
+    elif all(p is None for p in pressures) and payload['observations'].get('pressure_hpa') is not None and all(r.get('pressure_hpa') is not None for r in expected.values()):
+        advisory.append({'id':'pressure_outlook_omitted','message':'Local pressure and all six MET pressure references are available. Provide the outlook, or justify withholding all six local pressure predictions.'})
+    for h in parsed.hours:
+        observed=payload['observations'].get('pressure_hpa')
+        if h.hour_offset==1 and h.pressure_hpa is not None and observed is not None and abs(h.pressure_hpa-observed)>3:
+            advisory.append({'id':'pressure_first_step','message':'Pressure jumps over 3 hPa from the local observation to the first forecast. Check for an accidental splice to absolute MET pressure. Revise or justify the local change using evidence.'})
     responses={r.challenge_id:r for r in parsed.advisory_responses}
     pending=[]
     for issue in advisory:
@@ -401,7 +415,7 @@ def audit(payload,trace):
 
 def apply_interpretation(strip,payload,result,trace):
     model = trace['attempts'][-1].get('metadata',{}).get('model',os.getenv('LLM_MODEL','unconfigured')) if trace['attempts'] else os.getenv('LLM_MODEL','unconfigured')
-    strip.model_version='llm_v1_'+re.sub('[^a-zA-Z0-9_]+','_',model)[:40]
+    strip.model_version='llm_v2_'+re.sub('[^a-zA-Z0-9_]+','_',model)[:40]
     strip.synthesis.engine='llm-runtime'
     strip.synthesis.advisory_summary=strip.synthesis.summary
     strip.interpreter_status=trace['status']
@@ -440,7 +454,7 @@ def apply_interpretation(strip,payload,result,trace):
         slot.wind_dir_deg=hour.wind_direction_deg;slot.precipitation_mm=hour.precipitation_mm
         slot.state=hour.state;slot.state_label=hour.label;slot.source='llm-runtime'
         slot.forecast_valid_time=hour.valid_time
-        slot.forecast_pressure_hpa=None;slot.forecast_humidity_pct=None
+        slot.forecast_pressure_hpa=hour.pressure_hpa;slot.forecast_humidity_pct=None
         slot.confidence=0;slot.confidence_kind='llm_qualitative';slot.confidence_level=hour.confidence
         slot.evidence=[hour.rationale,*hour.evidence_references]
         slot.temperature_adjustment_c=(hour.temperature_c-slot.baseline_temperature_c) if hour.temperature_c is not None and slot.baseline_temperature_c is not None else 0
