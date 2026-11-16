@@ -188,6 +188,14 @@ class RuntimeLLMTests(unittest.TestCase):
         data=llm.series(frame,'rainfall_mm','mm',10,as_of=NOW,interval_start=True)
         self.assertEqual([p['value'] for p in data['points']],[1])
 
+    def test_summary_cannot_extend_to_end_of_hour_outside_six_hour_window(self):
+        _,payload,response=fixture();response['summary']='Rain is likely to peak near 22:00 local.'
+        _,hard,_=llm.validate(response,payload,set())
+        self.assertIn('summary_time:22:00',{h['id'] for h in hard})
+        response['summary']='Dry intervals are possible around 17:00 local, with uncertain cloud changes.'
+        _,hard,_=llm.validate(response,payload,set())
+        self.assertFalse(hard)
+
     def test_audit_contains_initial_response_and_correction(self):
         _,payload,response=fixture();bad=copy.deepcopy(response);bad['claims'][0]['value']=100
         call,_=transport([bad,response]);_,trace=llm.interpret(payload,call)

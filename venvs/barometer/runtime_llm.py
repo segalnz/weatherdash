@@ -2,7 +2,7 @@
 
 The deterministic forecast is advisory input, never a substituted LLM result.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, time as clock_time
 import hashlib
 import copy
 import json
@@ -70,7 +70,7 @@ Interpret the recent observations/history together with MET Norway, as a careful
 The deterministic diagnostics/regimes are advisory hypotheses, not a forecast you must reproduce.
 Return JSON only, matching the supplied response_schema. Do not return private chain-of-thought;
 provide concise evidence-based conclusions, rationale, uncertainty and an important alternative.
-Use exact input_id and the six supplied hour offsets/valid times. Stay within outlook_window; do not extend the narrative into the next morning/night beyond that window. Units: C, hPa, km/h, degrees, mm per model hour.
+Use exact input_id and the six supplied hour offsets/valid times. Any clock time in summary must be HH:MM local and INSIDE outlook_window; the end of the final model hour may lie outside that window. Stay within outlook_window; do not extend the narrative into the next morning/night beyond that window. Units: C, hPa, km/h, degrees, mm per model hour.
 Model precipitation applies to the hour STARTING at its valid_time. Gauge rain is a past interval, not an instantaneous rain detector.
 Missing values are unknown, never zero. Null is permitted in uncertain predictions. Preserve genuine zero values.
 Do not invent observations, visibility/radar evidence, sensor health or probabilities. Any numeric observation stated must have a matching claim.
@@ -303,6 +303,15 @@ def validate(raw,payload,challenged):
             hard.append({'id':'kiosk_fit:'+name,'message':'Shorten this text to fit the fixed kiosk area without scrolling or truncation.'})
         if '\n' in text or '\r' in text:
             hard.append({'id':'kiosk:'+name,'message':'Use a single plain-text line; the kiosk cannot scroll.'})
+    from zoneinfo import ZoneInfo
+    start=datetime.fromisoformat(payload['outlook_window']['start_local'])
+    end=datetime.fromisoformat(payload['outlook_window']['end_local'])
+    for hour,minute in re.findall(r'\b([01]?\d|2[0-3]):([0-5]\d)\b',parsed.summary):
+        clocks=[datetime.combine(day,clock_time(int(hour),int(minute)),ZoneInfo('Pacific/Auckland')).replace(fold=fold)
+                for day in {start.date(),end.date()} for fold in (0,1)]
+        if not any(start<=clock<=end for clock in clocks):
+            hard.append({'id':'summary_time:'+hour+':'+minute,
+                         'message':f'Summary time {hour}:{minute} is outside {start.isoformat()} to {end.isoformat()}. Correct the interpretation; do not extend the six-hour narrative to the end of the final MET hour.'})
     prose=' '.join([parsed.summary,parsed.strip_explanation,parsed.uncertainty,parsed.alternative,*[h.rationale for h in parsed.hours]])
     if re.search(r'\b\d+\s*%\s*(chance|probability)',prose,re.I):
         hard.append({'id':'probability','message':'No calibrated probability evidence was supplied; remove invented percentages.'})

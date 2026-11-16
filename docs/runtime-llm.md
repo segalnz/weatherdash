@@ -34,7 +34,8 @@ is retained for at most ten minutes before a fresh interpretation is needed.
 ## Deterministic checks: role and limits
 
 Hard checks cover known machine-checkable constraints: exact input identity and
-valid times, impossible/nonfinite values, fabricated structured observation claims,
+valid times and summary clock times within the six-hour window, impossible/nonfinite
+values, fabricated structured observation claims,
 unknown/null supporting references, forgotten data limitations, unsupported
 probability percentages, instantaneous-rain claims from an interval gauge, and
 kiosk-size violations. Schema text limits are 240/220/120 characters for outlook,
