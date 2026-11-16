@@ -18,6 +18,9 @@ class Record:
  def __getitem__(self,k):return self.values[k]
 
 class ReaderTests(unittest.TestCase):
+ def setUp(self):
+  guard=patch.dict('os.environ',{'LLM_ENABLED':'false'});guard.start();self.addCleanup(guard.stop)
+
  def test_newer_invalid_masks_old_pressure(self):
   now=datetime.now(timezone.utc)
   with patch.object(reader,'pressure_rows',return_value=[Record(now-timedelta(minutes=5),1004),Record(now,None,False)]),patch.object(reader,'query_flux',return_value=[]):

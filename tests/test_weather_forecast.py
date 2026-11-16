@@ -28,6 +28,11 @@ def row(offset, issued_age=1, **fields):
 
 
 class ForecastTests(unittest.TestCase):
+    def setUp(self):
+        guard = patch.dict('os.environ', {'LLM_ENABLED': 'false'})
+        guard.start()
+        self.addCleanup(guard.stop)
+
     def test_humidity_and_pressure_cannot_invent_rain(self):
         for humidity in (70, 86, 95, 100):
             for pressure in (1008, 1015, 1025):

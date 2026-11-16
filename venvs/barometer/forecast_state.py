@@ -81,6 +81,8 @@ class RooftopSnapshot(BaseModel):
     humidity_quality_reason: str | None = None
     rain_quality: str = "unknown"
     rain_recent_mm: float | None = None
+    rain_interval_start: str | None = None
+    rain_interval_end: str | None = None
 
 
 class DerivedFeatures(BaseModel):
@@ -131,13 +133,18 @@ class ForecastSlot(BaseModel):
     forecast_pressure_hpa: float | None = None
     forecast_humidity_pct: float | None = None
     baseline_temperature_c: float | None = None
+    baseline_pressure_hpa: float | None = None
+    baseline_humidity_pct: float | None = None
     baseline_wind_speed_kmh: float | None = None
     baseline_wind_dir_deg: float | None = None
     baseline_precipitation_mm: float | None = None
     temperature_adjustment_c: float = 0.0
     confidence_kind: str = "heuristic_evidence_score"
+    confidence_level: str | None = None
     forecast_valid_time: str | None = None
     forecast_issued: float | None = None
+    forecast_retrieved_at: float | None = None
+    met_symbol_code: str | None = None
 
 
 class EvidenceItem(BaseModel):
@@ -197,6 +204,9 @@ class ForecastSynthesis(BaseModel):
     as_of: str
     valid_until: str
     summary: str
+    engine: str = "deterministic-baseline"
+    alternative: str | None = None
+    advisory_summary: str | None = None
     strip_explanation: str | None = None
     evidence: list[EvidenceItem] = Field(default_factory=list)
     regimes: list[RegimeAssessment] = Field(default_factory=list)
@@ -211,6 +221,12 @@ class ForecastSynthesis(BaseModel):
 
 
 class ForecastStrip(BaseModel):
+    interpreter_status: str | None = None
+    interpreter_input_id: str | None = None
+    interpreter_input_as_of: str | None = None
+    interpreter_model: str | None = None
+    interpreter_attempts: int = 0
+    interpreter_issues: list[dict] = Field(default_factory=list)
     synthesis: ForecastSynthesis | None = None
     generated_at: str
     generated_at_iso: str | None = None

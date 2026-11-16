@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 EnvironmentFile=/etc/weatherdash.env
+EnvironmentFile=-/etc/weatherdash-llm.env
 Type=oneshot
 StateDirectory=weatherdash
 StateDirectoryMode=0755

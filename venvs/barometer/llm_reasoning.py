@@ -1,7 +1,7 @@
 def _trend_value(value):
     return "unknown" if value is None else f"{value:.1f}"
 
-"""LLM Reasoning layer for forecast validation and refinement.
+"""Legacy prompt compatibility fixture; NOT the runtime interpreter.
 
 Called AFTER the deterministic Zambretti engine.  The LLM reviews the
 same sensor data and provides structured refinements.  If the LLM is
@@ -21,13 +21,6 @@ from forecast_state import (
 )
 
 log = logging.getLogger(__name__)
-
-LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "")
-LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "https://api.openai.com/v1/chat/completions")
-LLM_COOLDOWN_SECONDS = 3600
-
-_last_llm_call: float = 0
 
 
 def build_llm_prompt(
@@ -139,73 +132,5 @@ def _season_name(month: int) -> str:
 
 
 def call_llm(messages: list[dict]) -> dict | None:
-    """Call the configured LLM API and return parsed JSON or None on failure."""
-    global _last_llm_call
-
-    if not LLM_API_KEY or not LLM_MODEL:
-        log.info("LLM not configured — skipping refinement")
-        return None
-
-    import time
-    now = time.time()
-    if now - _last_llm_call < LLM_COOLDOWN_SECONDS:
-        remaining = int(LLM_COOLDOWN_SECONDS - (now - _last_llm_call))
-        log.debug("LLM cooldown active — %ds remaining", remaining)
-        return None
-    _last_llm_call = now
-
-    import urllib.request
-    import ssl
-
-    body = json.dumps({
-        "model": LLM_MODEL,
-        "messages": messages,
-        "temperature": 0.3,
-        "max_tokens": 300,
-    }).encode()
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {LLM_API_KEY}",
-    }
-
-    try:
-        req = urllib.request.Request(LLM_ENDPOINT, data=body, headers=headers)
-        ctx = ssl.create_default_context()
-        resp = urllib.request.urlopen(req, context=ctx, timeout=15)
-        result = json.loads(resp.read().decode())
-
-        raw = result["choices"][0]["message"]["content"]
-        parsed = json.loads(raw)
-
-        log.info("LLM refinement: %s — %s", parsed.get("assessment"), parsed.get("rationale", "")[:80])
-        return parsed
-
-    except Exception as e:
-        log.warning("LLM call failed: %s", e)
-        return None
-
-
-def refine_with_llm(
-    rooftop: RooftopSnapshot,
-    derived: DerivedFeatures,
-    lux: float | None,
-    lux_condition: str | None,
-    zambretti_letter: str,
-    zambretti_label: str,
-    zambretti_idx: int,
-    current_confidence: int,
-    month: int,
-    hour: int,
-    forecast_temps: list[float | None],
-    forecast_winds: list[float | None],
-    forecast_precip: list[float | None],
-) -> dict | None:
-    """Run the full pipeline: build prompt, call LLM, return refinement or None."""
-    messages = build_llm_prompt(
-        rooftop, derived, lux, lux_condition,
-        zambretti_letter, zambretti_label, zambretti_idx,
-        current_confidence, month, hour,
-        forecast_temps, forecast_winds, forecast_precip,
-    )
-    return call_llm(messages)
+    """Disabled legacy adapter. Runtime interpretation lives in runtime_llm.py."""
+    raise RuntimeError("Legacy refinement is disabled; use runtime_llm with validation and revision")

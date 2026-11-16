@@ -92,6 +92,9 @@ def get_latest_rooftop() -> RooftopSnapshot:
             snap.rain_recent_mm = rain
             snap.rain_detected = rain > 0
             snap.rain_quality = "ok"
+            snap.rain_interval_start = latest["_time"].isoformat()
+            snap.rain_interval_end = (latest["_time"] + timedelta(minutes=10)).isoformat()
+            snap.observation_times["rain"] = snap.rain_interval_end
 
     # A newer invalid packet must not leave an older good reading looking current.
     quality = _get_latest_field("weatherdata", "mqtt_consumer", "quality_valid", stop, timedelta(minutes=10))
@@ -153,7 +156,7 @@ def get_recent_hours_data(hours: int = 4) -> pd.DataFrame:
             f'from(bucket: "weatherdata") '
             f'|> range(start: {start.isoformat()}) '
             f'|> filter(fn: (r) => r._measurement == "mqtt_consumer" and r._field == "{field}" and r.topic == "{sensor_topic(field)}") '
-            f'|> aggregateWindow(every: 5m, fn: {"last" if field == "direction" else "mean"}, createEmpty: false) '
+            f'|> aggregateWindow(every: 5m, fn: {"last" if field == "direction" else "max" if field == "gust" else "mean"}, createEmpty: false) '
         )
         records = query_flux(flux)
         for r in records:
@@ -222,7 +225,7 @@ def get_rainfall_since(since: datetime) -> float:
     flux = (
         f'from(bucket: "weatherdata") '
         f'|> range(start: {since.isoformat()}, stop: {stop.isoformat()}) '
-        f'|> filter(fn: (r) => r._measurement == "rainfall" and r._field == "rainfall_mm") '
+        f'|> filter(fn: (r) => r._measurement == "rainfall" and r._field == "rainfall_mm" and r.station == "davis-rainbucket") '
         f'|> sum() '
     )
     records = query_flux(flux)
@@ -240,7 +243,7 @@ def get_rainfall_series(hours: int = 4) -> pd.DataFrame:
     flux = (
         f'from(bucket: "weatherdata") '
         f'|> range(start: {start.isoformat()}) '
-        f'|> filter(fn: (r) => r._measurement == "rainfall" and r._field == "rainfall_mm") '
+        f'|> filter(fn: (r) => r._measurement == "rainfall" and r._field == "rainfall_mm" and r.station == "davis-rainbucket") '
     )
     records = query_flux(flux)
     data = []

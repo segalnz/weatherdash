@@ -32,6 +32,11 @@ def model(amount=0):
 
 
 class SynthesisTests(unittest.TestCase):
+    def setUp(self):
+        guard = patch.dict('os.environ', {'LLM_ENABLED': 'false'})
+        guard.start()
+        self.addCleanup(guard.stop)
+
     def test_related_pressure_signals_are_one_dependency_group(self):
         x=synthesise(snapshot(),DerivedFeatures(pressure_delta_1h=-2,pressure_delta_3h=-2),model(),NOW)
         r=next(r for r in x.regimes if r.id=='deteriorating')

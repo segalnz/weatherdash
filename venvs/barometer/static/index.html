@@ -87,6 +87,7 @@
   </div>
   <section class="outlook" aria-live="polite">
     <h2>Next six hours</h2>
+    <p id="interpreter-status"></p>
     <p id="outlook-summary">Loading the consolidated outlook…</p>
     <ul id="regime-status"></ul>
     <ul id="outlook-windows"></ul>
@@ -139,6 +140,9 @@
         if (!response.ok) throw new Error('forecast unavailable');
         var data = await response.json();
         forecastVersion = data.model_version;
+        document.getElementById('interpreter-status').textContent = data.interpreter_status ?
+          'Runtime interpreter: ' + data.interpreter_status + ' · ' + data.interpreter_model + ' · ' + data.interpreter_attempts + ' attempt(s)' :
+          'Deterministic reference only — runtime interpreter is not enabled.';
         updateVerification();
         var outlook = data.synthesis;
         if (!outlook || Date.now() >= Date.parse(outlook.valid_until)) {
@@ -151,14 +155,14 @@
           var row = document.createElement('li');
           var names = {deteriorating: 'Deterioration pattern', possible_frontal_passage: 'Possible frontal-passage pattern', mist_potential: 'Mist/low-cloud potential'};
           var states = {candidate: 'under observation', persistent: 'persistent evidence', weakening: 'weakening'};
-          row.textContent = (names[regime.id] || 'Local pattern') + ': ' + (states[regime.persistence] || 'under observation');
+          row.textContent = (outlook.engine === 'llm-runtime' ? 'Sanity-check diagnostic: ' : '') + (names[regime.id] || 'Local pattern') + ': ' + (states[regime.persistence] || 'under observation');
           if (regime.persistent_since) row.textContent += ' (persistent since ' + clock.format(new Date(regime.persistent_since)) + ')';
           regimes.appendChild(row);
         });
         outlook.windows.forEach(function(window) {
           var row = document.createElement('li');
           row.textContent = clock.format(new Date(window.start)) + '–' + clock.format(new Date(window.end)) +
-            (window.state === 'wet' ? ': MET rain guidance' : ': MET dry guidance') + ' (hourly timing)';
+            (window.state === 'wet' ? ': ' + (window.source === 'llm-runtime' ? 'LLM rain outlook' : 'MET rain guidance') : ': ' + (window.source === 'llm-runtime' ? 'LLM dry outlook' : 'MET dry guidance')) + ' (hourly timing)';
           windows.appendChild(row);
         });
         outlook.limitations.forEach(function(message) {
@@ -166,6 +170,9 @@
           row.textContent = message;
           limitations.appendChild(row);
         });
+        if (outlook.alternative) {
+          var alternate = document.createElement('li'); alternate.textContent = 'Alternative: ' + outlook.alternative; limitations.appendChild(alternate);
+        }
         context.textContent = 'Assessed ' + clock.format(new Date(outlook.as_of)) + ' NZ. ' + outlook.uncertainty;
       } catch (error) {
         summary.textContent = 'Consolidated outlook unavailable; awaiting a successful refresh.';

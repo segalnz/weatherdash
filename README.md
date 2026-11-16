@@ -21,7 +21,7 @@ corrected hPa readings; the application does not apply those corrections again.
 
 ## Forecasting approach: reason from evidence, without a local training prerequisite
 
-Weatherdash's intended core is a **runtime large language model (LLM) interpreter**.
+Weatherdash's core is a **runtime large language model (LLM) interpreter**.
 It receives recent local sensor histories, data-quality flags, derived trends and
 MET Norway guidance, then reasons about their combined meaning in the manner of an
 experienced weather observer. Its output should explain the likely next six hours,
@@ -33,10 +33,12 @@ advisory disagreements should invite justification. The deterministic forecast i
 not silently substituted for the LLM's interpretation. If bounded revision cannot
 resolve a problem, that failure or disagreement must remain visible.
 
-**Implementation status:** the deployed engine currently provides the deterministic
-baseline, evidence preparation, regime tracking and verification. Runtime LLM
-interpretation and its correction loop are **not connected yet**. LLM-assisted
-development of fixed rules is not equivalent to the intended runtime interpretation.
+**Implementation status:** the scheduled forecast worker now calls DeepSeek directly
+for runtime interpretation, validates its structured response, and returns specific
+problems to the model for revision. It allows at most two revisions. Hard factual,
+time, schema and kiosk-size problems must be corrected. Advisory disagreements may
+be justified with input evidence and remain visible in the published explanation.
+The deterministic forecast is not silently substituted if interpretation fails.
 
 The intended approach does not require first training a new site-specific model. Individual diagnostics
 still need enough recent observations: for example, a three-hour pressure trend
@@ -45,7 +47,7 @@ checking forecast skill and improving rules. Some ML approaches can use pretrain
 models without months of site-specific data; Weatherdash's distinction is that
 **local model training is not a prerequisite for its core reasoning**.
 
-The intended process is:
+The runtime process is:
 
 1. **Check the evidence.** Verify sensor freshness, validity and coverage; treat
    missing readings as unknown. Distinguish atmospheric change from sensor faults.
@@ -67,18 +69,19 @@ For example, falling pressure and a rising dew point may support deterioration
 already forecast by MET. They do not locate an incoming rain band or establish its
 arrival time. Likewise, high humidity alone cannot confirm rain or fog.
 
-**Implemented today:** sensor quality checks, time-aware trends, a structured
-local evidence ledger, cautious regime candidates, explicit mixed local/MET
-signals, and a consolidated outlook with timed MET wet/dry windows and limitations.
-The API exposes this as `synthesis`; the browser dashboard displays it below the
-forecast strip. Evidence dependencies prevent related pressure changes being counted
-as independent corroboration. The outlook expires when its supporting observations
-age out. Regime support is qualitative, not a calibrated probability.
+**Implemented today:** sensor quality checks, time-aware histories/trends, a
+structured evidence ledger, persistent advisory regime diagnostics, runtime LLM
+interpretation with a challenge/revision loop, kiosk-sized rationale, audit records
+and issue-time forecast verification. The LLM receives local observations, recent
+histories, quality flags and timed MET data—not just a deterministic forecast to
+reword. Its validated hourly conditions, temperature, wind and rainfall become
+the future forecast; current numeric observations remain instrument readings.
 
-Observation-based current conditions and MET hourly future forecasts remain the
-baseline, with the existing bounded temperature adjustment. Future values are not
-changed by the new narrative layer. Issue-time archives now include the synthesis,
-local observation/feature snapshot and explicit model wind/rain baselines.
+MET and persistence forecasts remain explicit evaluation baselines. Deterministic
+regimes are labelled sanity-check diagnostics, not asserted to be the LLM's own
+conclusions. Missing inputs remain unknown. Local/MET disagreements and justified
+departures remain visible. The API exposes the interpretation through `synthesis`
+and top-level `interpreter_*` provenance fields.
 
 Regime assessments now have restart-safe persistence and asymmetric entry/exit
 rules. A pattern needs at least ten minutes and three fresh observation cycles to
@@ -93,12 +96,11 @@ provides a comparison table, and `GET /api/verification` exposes the scheduled
 report. Missing baselines are never recreated from later observations. Read the
 [persistence and verification guide](docs/regimes-and-verification.md).
 
-**Proposed next:** evaluate the new records before changing local corrections;
-improve the older confidence display and consider independent regional/event
-observations. No calibrated probabilities or confirmed front/fog verification are
-claimed. The next architectural step is runtime LLM interpretation with a
-challenge-and-revision loop, rather than using an LLM only to word a fixed result.
-See the [design review](docs/forecast-design-review.md).
+**Proposed next:** evaluate issued LLM forecasts and correction exchanges against
+the baselines before making skill claims; add independent regional/event evidence
+and solar-normalized lux where available. Confidence is qualitative support, not a
+calibrated probability. Read the [runtime interpreter guide](docs/runtime-llm.md)
+and [design history](docs/forecast-design-review.md).
 
 The approach fits observation-aware short-range forecasting; WMO describes
 [nowcasting and very-short-range forecasting](https://space.oscar.wmo.int/applicationareas/view/2_3_nowcasting_very_short_range_forecasting)
@@ -116,15 +118,18 @@ Wind / SHT45 / rain → MQTT → Telegraf or dedicated ingesters → InfluxDB
                                                                ↑
                                                 MET Norway forecast ingester
                                                                ↓
-                                      scheduled local forecast and verification
+                                     runtime LLM ↔ sanity checks / revision
+                                                               ↓
+                                          cached forecast and verification
                                                                ↓
                                                FastAPI / SVG / Grafana
 ```
 
 Local observations inform current conditions and pressure trends. Future slots use
-fresh, correctly timed MET predictions. Pressure and humidity alone do not establish
-rain or its arrival time. Missing or invalid evidence stays unknown. Confidence is
-a heuristic display score, not a calibrated probability.
+LLM interpretations grounded in fresh, correctly timed MET predictions and local
+evidence. Pressure and humidity alone do not establish precise rain arrival.
+Missing or invalid evidence stays unknown. LLM support labels are qualitative,
+not calibrated probabilities.
 
 ## Seeing the forecast basis
 
@@ -133,16 +138,16 @@ hourly slots, plus an important limitation when present. The footer grows modest
 when needed; longer explanations remain in the dashboard panel and the SVG's
 accessible description. A stale explanation is withheld rather than shown as current.
 
-The API supports `synthesis.strip_explanation` for a concise interpreter-supplied
-rationale. Once runtime LLM integration exists, its validated explanation should be
-published there. Until then, the strip honestly displays the current baseline's
-summary and existing evidence; this does not imply an LLM has interpreted the data.
+The LLM supplies `synthesis.strip_explanation`, a concise account of the forecast
+basis. The validator requests a shorter revision if its outlook, rationale or key
+uncertainty cannot fit the fixed kiosk area. The renderer does not silently trim a
+validated LLM explanation, and it never relies on scrolling, hover or click.
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| `venvs/barometer/` | Forecast service, sensor quality, trends, rendering and archive |
+| `venvs/barometer/` | Runtime LLM, evidence/quality, correction checks, rendering and archive |
 | `venvs/metno_forecast.py` | MET Norway forecast ingestion |
 | `venvs/forecast_processor.py` | Verification against archived issued forecasts |
 | `venvs/rainfall/`, `venvs/wind/` | Rain aggregation and prevailing wind processing |
@@ -213,8 +218,8 @@ These regression tests use fixtures and mocks rather than publishing test readin
 to a live broker. An arbitrary token satisfies configuration during offline tests:
 
 ```sh
-INFLUX_TOKEN=offline-test .venv/bin/python -m unittest discover -s tests -v
-INFLUX_TOKEN=offline-test .venv/bin/python -m unittest discover -s pressure-monitor/tests -v
+INFLUX_TOKEN=offline-test LLM_ENABLED=false .venv/bin/python -m unittest discover -s tests -v
+INFLUX_TOKEN=offline-test LLM_ENABLED=false .venv/bin/python -m unittest discover -s pressure-monitor/tests -v
 ```
 
 The regression suites cover both the original forecast path and structured synthesis scenarios. Coverage includes forecast timing,
@@ -227,8 +232,10 @@ This repository was assembled from the running Weatherdash source on 15 November
 2026. Repository copies use environment configuration in place of embedded deployment
 credentials; creating the repository does not change the running installation.
 Deployment files are templates to review for your host, not an automatic installer.
-The optional legacy LLM module is retained for compatibility with its tests; it is
-not the active forecast path. External LLM synthesis is not implemented here.
+The legacy Zambretti refinement caller is disabled. The active runtime interpreter
+is `venvs/barometer/runtime_llm.py`; configure it as described in the runtime guide.
+Repository examples default `LLM_ENABLED=false` to avoid unintended provider calls.
+The deployed worker enables it explicitly with private service configuration.
 
 Credentials, access tokens, Python environments, caches, logs, databases and backups
 are excluded. Public visibility does not grant an open-source license; no license

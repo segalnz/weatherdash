@@ -74,6 +74,18 @@ def _strip_notes(strip, width):
     basis = _basis_text(strip)
     notes = textwrap.wrap('Outlook: ' + ' '.join(synthesis.summary.split()), width=capacity, max_lines=2, placeholder='…')
     notes += textwrap.wrap('Basis: ' + ' '.join(basis.split()), width=capacity, max_lines=2, placeholder='…')
+    if synthesis.engine == 'llm-runtime':
+        # Validated interpreter text must fit in full; never silently truncate it.
+        blocks = [('Outlook: '+synthesis.summary, 2), ('Basis: '+basis, 2), ('Note: '+synthesis.uncertainty, 1)]
+        complete=[]
+        for text,budget in blocks:
+            wrapped=textwrap.wrap(' '.join(text.split()),width=capacity)
+            if len(wrapped)>budget:
+                message='Interpreter explanation needs shortening; awaiting a corrected kiosk update.'
+                return textwrap.wrap(message,width=capacity), '\n'.join(text for text,_ in blocks)
+            complete.extend(wrapped)
+        full='\n'.join([synthesis.summary,'Basis: '+basis,synthesis.uncertainty,*synthesis.conflicts,*synthesis.limitations])
+        return complete, full
     cautions = synthesis.conflicts + synthesis.limitations
     if cautions:
         notice = 'Note: ' + cautions[0]
@@ -115,8 +127,11 @@ def render_forecast_strip(strip: ForecastStrip) -> str:
 
     note_y = OFFSET_Y + SLOT_H + 20
     for index, note in enumerate(notes):
-        lines.append(f'<text data-role="forecast-explanation" x="{MARGIN}" y="{note_y + index * 18}" fill="{TEXT_SECONDARY}" font-family="sans-serif" font-size="13">{escape(note)}</text>')
+        lines.append(f'<text data-role="forecast-explanation" x="{MARGIN}" y="{note_y + index * 18}" fill="{TEXT_SECONDARY}" font-family="monospace" font-size="13">{escape(note)}</text>')
     metadata = f'Moonshine Valley Barometer — {strip.generated_at} | evidence score, not rain probability'
+    if strip.interpreter_status:
+        metadata = f'LLM {strip.interpreter_status} — {strip.interpreter_model} | {strip.generated_at} | {strip.interpreter_attempts} attempt(s)'
+
     capacity = max(12, int((total_w - 2 * MARGIN) / (13 * .65)))
     metadata = textwrap.shorten(metadata, width=capacity, placeholder='…')
     lines.append(f'<text x="{MARGIN}" y="{total_h - 8}" fill="{TEXT_MUTED}" font-family="sans-serif" font-size="13">{escape(metadata)}</text>')
@@ -240,7 +255,12 @@ def _draw_slot(lines: list, x: int, y: int, slot: ForecastSlot, idx: int):
     _draw_wind(lines, cx, wind_base_y, slot.wind_dir_deg, slot.wind_speed_kmh)
 
     conf_y = y + 285
-    _draw_confidence_bar(lines, cx, conf_y, w - 24, slot.confidence)
+    if slot.confidence_kind == 'llm_qualitative' and slot.confidence_level:
+        lines.append(f'<text x="{cx}" y="{conf_y + 9}" fill="{TEXT_SECONDARY}" font-family="sans-serif" font-size="11" text-anchor="middle">Support: {escape(slot.confidence_level)}</text>')
+    elif slot.confidence_kind == 'unavailable':
+        lines.append(f'<text x="{cx}" y="{conf_y + 9}" fill="{TEXT_MUTED}" font-family="sans-serif" font-size="11" text-anchor="middle">Unavailable</text>')
+    else:
+        _draw_confidence_bar(lines, cx, conf_y, w - 24, slot.confidence)
 
     lines.append("</g>")
 

@@ -127,7 +127,7 @@ def _build_forecast(previous_synthesis=None) -> ForecastStrip:
 
     rooftop = get_latest_rooftop()
     rooftop_df = get_recent_hours_data(hours=4)
-    rain_df = get_rainfall_series(hours=4)
+    rain_df = get_rainfall_series(hours=6)
     derived = compute_derived_features(rooftop_df, rain_df, now=now)
     pressure_tendency = compute_pressure_tendency(derived)
 
@@ -207,6 +207,8 @@ def _build_forecast(previous_synthesis=None) -> ForecastStrip:
             hour_offset=horizon_h,
             evidence=slot_evidence,
             baseline_temperature_c=raw.get("temp"),
+            baseline_pressure_hpa=raw.get("pressure"),
+            baseline_humidity_pct=raw.get("humidity"),
             baseline_wind_speed_kmh=metno_ws_kmh,
             baseline_wind_dir_deg=raw_wd,
             baseline_precipitation_mm=raw.get("precipitation") if raw.get("precipitation_period_hours") == 1 else None,
@@ -228,10 +230,12 @@ def _build_forecast(previous_synthesis=None) -> ForecastStrip:
             precipitation_mm=raw.get("precipitation") if raw.get("precipitation_period_hours") == 1 else None,
             forecast_valid_time=raw.get("valid_time"),
             forecast_issued=raw.get("forecast_issued"),
+            forecast_retrieved_at=raw.get("retrieved_at"),
+            met_symbol_code=raw.get("symbol_code"),
         )
         slots.append(slot)
 
-    return ForecastStrip(
+    strip = ForecastStrip(
         synthesis=synthesise(rooftop, derived, raw_metno, now, previous=previous_synthesis),
         generated_at=generated,
         generated_at_iso=now.isoformat(),
@@ -245,6 +249,10 @@ def _build_forecast(previous_synthesis=None) -> ForecastStrip:
         pressure_history_times=pressure_times,
         pressure_history_timestamps=pressure_timestamps,
     )
+    if os.getenv('LLM_ENABLED', 'false').lower() in ('1', 'true', 'yes'):
+        from runtime_llm import run_runtime
+        strip = run_runtime(strip, rooftop_df, rain_df, press_df)
+    return strip
 
 
 def main():

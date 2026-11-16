@@ -267,3 +267,12 @@ reports paired metrics by version/lead/regime and exposes `/api/verification` pl
 a browser comparison table. Independent front/fog truth, calibrated probabilities
 and statistical significance of any improvement are not claimed. See
 [the policy and operations guide](regimes-and-verification.md).
+
+## Runtime interpretation — 16 November 2026
+
+The runtime LLM is now implemented as the primary interpreter, superseding the
+historical proposal that treated it as optional wording over a deterministic
+consensus. Deterministic preparation, persistence and checks remain valuable, but
+factual problems and advisory disagreements go back to the model for correction or
+justification. A failed loop is visible; no deterministic forecast is silently
+substituted. See [the runtime contract](runtime-llm.md).

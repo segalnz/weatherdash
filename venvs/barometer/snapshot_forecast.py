@@ -22,7 +22,12 @@ def archive(strip):
         points.append(Point('forecast_synthesis').tag('model_version', strip.model_version).time(issued)
                       .field('payload_json', strip.synthesis.model_dump_json())
                       .field('observations_json', strip.rooftop.model_dump_json())
-                      .field('features_json', strip.derived.model_dump_json()))
+                      .field('features_json', strip.derived.model_dump_json())
+                      .field('interpreter_status',strip.interpreter_status or 'not_enabled')
+                      .field('interpreter_model',strip.interpreter_model or 'none')
+                      .field('interpreter_input_id',strip.interpreter_input_id or 'none')
+                      .field('interpreter_attempts',strip.interpreter_attempts)
+                      .field('interpreter_issues_json',json.dumps(strip.interpreter_issues)))
     for slot in strip.slots[1:]:
         if not slot.forecast_valid_time:
             continue
@@ -36,12 +41,14 @@ def archive(strip):
              .field('degraded', slot.degraded).field('confidence', slot.confidence)
              .field('evidence_json', json.dumps(slot.evidence))
              .field('temperature_adjustment_c', slot.temperature_adjustment_c)
+             .field('interpreter_status',strip.interpreter_status or 'not_enabled')
+             .field('interpreter_model',strip.interpreter_model or 'none')
              .field('persistent_regimes_json', json.dumps([r.id for r in strip.synthesis.regimes if r.persistence == 'persistent'] if strip.synthesis else [])))
         for key, value in [('temp', slot.temperature_c), ('baseline_temp', slot.baseline_temperature_c),
                            ('precipitation', slot.precipitation_mm), ('baseline_precipitation', slot.baseline_precipitation_mm),
                            ('baseline_wind_speed', slot.baseline_wind_speed_kmh / 3.6 if slot.baseline_wind_speed_kmh is not None else None),
                            ('baseline_wind_dir', slot.baseline_wind_dir_deg),
-                           ('baseline_pressure', slot.forecast_pressure_hpa), ('baseline_humidity', slot.forecast_humidity_pct),
+                           ('baseline_pressure', slot.baseline_pressure_hpa), ('baseline_humidity', slot.baseline_humidity_pct),
                            ('forecast_issued', slot.forecast_issued),
                            ('wind_speed', slot.wind_speed_kmh / 3.6 if slot.wind_speed_kmh is not None else None),
                            ('pressure', slot.forecast_pressure_hpa), ('humidity', slot.forecast_humidity_pct),
