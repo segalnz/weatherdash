@@ -110,15 +110,18 @@ def clean(value):
         return None
 
 
-def series(frame, field, unit, minutes, scale=1):
+def series(frame, field, unit, minutes, scale=1, as_of=None, interval_start=False):
     import pandas as pd
     points=[]
     if not frame.empty and field in frame:
-        for stamp,value in frame[['_time',field]].itertuples(index=False,name=None):
+        for stamp,value in frame[['_time',field]].sort_values('_time').itertuples(index=False,name=None):
             if pd.isna(stamp):
                 continue
+            if stamp.tzinfo is None:stamp=stamp.replace(tzinfo=timezone.utc)
+            end=stamp+timedelta(minutes=minutes) if interval_start else stamp
+            if as_of is not None and end>as_of:continue
             points.append({'time':stamp.isoformat(),'value':None if pd.isna(value) else clean(float(value)*scale)})
-    return dict(unit=unit, interval_minutes=minutes, oldest_first=True, points=points,
+    return dict(unit=unit, interval_minutes=minutes,time_basis='completed_interval_start' if interval_start else 'aggregate_window_end', oldest_first=True, points=points,
                 data_quality='partial' if not points or any(p['value'] is None for p in points) else 'available',
                 gaps='Missing intervals are unknown; never forward-fill.')
 
@@ -169,13 +172,13 @@ def make_payload(strip, roof_history, rain_history, pressure_history):
             limitations.append({'id':f'missing_met_rain_{slot.hour_offset}','reason':'Hourly MET rain is unknown for this slot; do not treat it as dry.'})
         regional.append(row)
     history={
-        'pressure_hpa':series(pressure_history,'pressure','hPa',5),
-        'temperature_c':series(roof_history,'temperature','C',5),
-        'humidity_pct':series(roof_history,'humidity','%',5),
-        'wind_speed_kmh':series(roof_history,'speed','km/h',5,3.6),
-        'wind_direction_deg':series(roof_history,'direction','degrees',5),
-        'gust_kmh':series(roof_history,'gust','km/h',5,3.6),
-        'rainfall_mm':series(rain_history,'rainfall_mm','mm per completed 10-minute interval',10)}
+        'pressure_hpa':series(pressure_history,'pressure','hPa',5,as_of=now),
+        'temperature_c':series(roof_history,'temperature','C',5,as_of=now),
+        'humidity_pct':series(roof_history,'humidity','%',5,as_of=now),
+        'wind_speed_kmh':series(roof_history,'speed','km/h',5,3.6,as_of=now),
+        'wind_direction_deg':series(roof_history,'direction','degrees',5,as_of=now),
+        'gust_kmh':series(roof_history,'gust','km/h',5,3.6,as_of=now),
+        'rainfall_mm':series(rain_history,'rainfall_mm','mm per completed 10-minute interval',10,as_of=now,interval_start=True)}
     from zoneinfo import ZoneInfo
     payload=clean(dict(schema_version=1,prompt_version='runtime_v1',as_of=strip.generated_at_iso,
         local_time=now.astimezone(ZoneInfo('Pacific/Auckland')).isoformat(),

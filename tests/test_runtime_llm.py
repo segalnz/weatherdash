@@ -180,6 +180,14 @@ class RuntimeLLMTests(unittest.TestCase):
             with patch.dict('os.environ',{'FORECAST_CACHE':str(file)}),patch.object(llm,'chat') as provider:
                 main.api_forecast();provider.assert_not_called()
 
+    def test_history_excludes_future_bucket_ends_and_incomplete_rain(self):
+        frame=pd.DataFrame({'_time':[NOW-timedelta(minutes=5),NOW+timedelta(minutes=5)],'temperature':[12,99]})
+        data=llm.series(frame,'temperature','C',5,as_of=NOW)
+        self.assertEqual([p['value'] for p in data['points']],[12])
+        frame=pd.DataFrame({'_time':[NOW-timedelta(minutes=10),NOW-timedelta(minutes=5)],'rainfall_mm':[1,99]})
+        data=llm.series(frame,'rainfall_mm','mm',10,as_of=NOW,interval_start=True)
+        self.assertEqual([p['value'] for p in data['points']],[1])
+
     def test_audit_contains_initial_response_and_correction(self):
         _,payload,response=fixture();bad=copy.deepcopy(response);bad['claims'][0]['value']=100
         call,_=transport([bad,response]);_,trace=llm.interpret(payload,call)
