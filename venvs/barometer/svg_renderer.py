@@ -167,7 +167,9 @@ def _draw_pressure_graph(lines: list, strip: ForecastStrip):
     future=[value for value in values[1:] if valid(value)]
     if future and source=='llm-runtime':
         observed=f'{values[0]:.1f} hPa' if valid(values[0]) else 'unavailable'
-        caption=f'Pressure outlook — local hPa, LLM forecast | observed Now: {observed}; tendency: {_tendency_label(strip.pressure_tendency)}'
+        delta=strip.derived.pressure_delta_3h if strip.derived else None
+        trend=f'{delta:+.1f} hPa' if delta is not None and math.isfinite(delta) else 'unavailable'
+        caption=f'Pressure outlook — local hPa, LLM forecast | observed Now: {observed}; past 3h change: {trend}'
     elif future and source=='metno-reference':
         caption='Pressure outlook — MET sea-level reference, next 6h | local observations are not spliced into this reference'
     else:
