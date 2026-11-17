@@ -1,11 +1,19 @@
 # Weatherdash
 
-Weatherdash combines local **temperature, humidity, wind speed and direction,
-gusts, rainfall and barometric pressure** with MET Norway forecasts to produce a
-rolling six-hour local outlook. It interprets how these observations change together,
-checks their quality, and compares the resulting local evidence with the regional
-forecast. Pressure is one part of that evidence, alongside moisture, temperature,
-wind and measured rain.
+Weatherdash uses a **large language model (LLM) at runtime to interpret local weather
+sensor data together with MET Norway forecasts**, producing a consolidated outlook
+for the next six hours with an explanation of its reasoning and uncertainty.
+
+The LLM considers **temperature, humidity, wind speed and direction, gusts, rainfall
+and barometric pressure**, their recent histories and data-quality flags. It acts
+as the weather interpreter; deterministic checks challenge factual problems and
+questionable inferences, returning them to the LLM for correction or justification.
+The validated LLM forecast is published, rather than silently replaced by fixed rules.
+
+This approach uses an existing model's capabilities without first training a
+site-specific predictor on months of labelled local outcomes. Issued forecasts
+and correction exchanges are archived so performance can be checked against
+actual observations and reference forecasts.
 
 The local instruments include an SHT45 temperature/humidity sensor, an anemometer
 for wind and gusts, a Davis rain bucket, and a BMP388 pressure sensor connected
